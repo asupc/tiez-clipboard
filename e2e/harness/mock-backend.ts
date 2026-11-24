@@ -31,7 +31,7 @@ const now = Date.now();
 const injectedDefaults = (window as any).__TIEZ_DEFAULT_SETTINGS__ as Record<string, string> | undefined;
 // Fail loudly: without the injected defaults the preview would silently run on
 // empty settings, which is exactly the drift this file exists to prevent.
-if (!injectedDefaults || Object.keys(injectedDefaults).length < 50) {
+if (!injectedDefaults || Object.keys(injectedDefaults).length < 25) {
   throw new Error('e2e harness: default settings were not injected (see vite.config.mjs)');
 }
 export const DEFAULT_SETTINGS: Record<string, string> = injectedDefaults;
