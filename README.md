@@ -12,7 +12,7 @@
 
   | STARS | VERSION | LICENSE | PLATFORM |
   | :--- | :--- | :--- | :--- |
-  | [![Stars](https://img.shields.io/github/stars/jimuzhe/tiez-clipboard?label=STARS&style=for-the-badge&color=4CAF50)](https://github.com/jimuzhe/tiez-clipboard/stargazers) | [![Version](https://img.shields.io/github/v/release/jimuzhe/tiez-clipboard?label=VERSION&style=for-the-badge&color=2196F3)](https://github.com/jimuzhe/tiez-clipboard/releases) | [![License](https://img.shields.io/badge/LICENSE-GPL--3.0-FF9800?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0) | [![Platform](https://img.shields.io/badge/PLATFORM-macOS-f44336?style=for-the-badge)](https://github.com/jimuzhe/tiez-clipboard/releases) |
+  | [![Stars](https://img.shields.io/github/stars/jimuzhe/tiez-clipboard?label=STARS&style=for-the-badge&color=4CAF50)](https://github.com/jimuzhe/tiez-clipboard/stargazers) | [![Version](https://img.shields.io/github/v/release/jimuzhe/tiez-clipboard?label=VERSION&style=for-the-badge&color=2196F3)](https://github.com/jimuzhe/tiez-clipboard/releases) | [![License](https://img.shields.io/badge/LICENSE-GPL--3.0-FF9800?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0) | [![Platform](https://img.shields.io/badge/PLATFORM-Windows-0078D4?style=for-the-badge)](https://github.com/jimuzhe/tiez-clipboard/releases) |
 
   [English](./README.md) | [简体中文](./README.zh-CN.md)
 </div>
@@ -21,27 +21,19 @@
 
 <div align="center">
 
-## Theme Gallery
+## Design
 
-Eight built-in themes; four of them:
-
-  <table>
-    <tr>
-      <td align="center"><b>Frosted</b><br><img src="docs/images/毛玻璃.png" width="220" /></td>
-      <td align="center"><b>Paper</b><br><img src="docs/images/书.png" width="220" /></td>
-      <td align="center"><b>Sticky</b><br><img src="docs/images/便利贴.png" width="220" /></td>
-      <td align="center"><b>Retro</b><br><img src="docs/images/3d.png" width="220" /></td>
-    </tr>
-  </table>
+TieZ uses the Windows Mica material with native light and dark palettes. The
+interface is Simplified Chinese only, and the whole app runs locally.
 </div>
 
 ---
 
 ## Why TieZ?
 
-| Performance | Practicality | Privacy | Sync |
+| Performance | Practicality | Privacy | Local |
 | :--- | :--- | :--- | :--- |
-| **Instant Access**<br>Native listeners and Rust core ensure absolute speed. | **Power Workflows**<br>Rich text, tags, and AI-assisted actions. | **Local & Private**<br>Local-first storage with smart masking for sensitive data in previews. | **Cloud Fluent**<br>Seamless WebDAV and MQTT cross-device sync. |
+| **Instant Access**<br>Native listeners and Rust core ensure absolute speed. | **Power Workflows**<br>Rich text, images, files and sequential paste. | **Local & Private**<br>Local-first storage with smart masking for sensitive data in previews. | **No Account**<br>No cloud, no sync service, no telemetry account. Your data stays on this PC. |
 
 ---
 
@@ -50,23 +42,15 @@ Eight built-in themes; four of them:
 ### Core Experience
 - **Native Efficiency**: Built with Tauri 2 and Rust for minimum memory footprint.
 - **Smart Capture**: Automatically collects text, rich text (HTML), images, and file paths.
-- **Modern UI**: Supports Mica/Acrylic effects and Dark/Light modes with **4 elegant theme styles**.
+- **Modern UI**: Windows Mica material with light/dark modes and adjustable surface opacity.
 - **Edge Docking**: Automatically hides at the screen edge to stay out of your way.
 
 ### Management & Enhancements
-- **Tag System**: Organize your history with custom multi-color tags.
 - **Emoji Library**: Comprehensive built-in emoji management for quick access.
-- **Advanced Settings**: Granular control over cleanup rules and app behavior.
+- **Advanced Settings**: Granular control over hotkeys, window behavior, and core app logic.
 - **Privacy Masking**: Auto-masks sensitive info like IDs and phone numbers in previews.
 
-### Networking & Transport
-- **WebDAV Sync**: Your data, your cloud. Complete cross-device history.
-- **LAN File Transfer**: Seamlessly move items between devices on the same network.
-- **Verifcation Code Sync**: Instant transfer of OTP codes to your active device.
-- **MQTT Connectivity**: Optimized for real-time synchronization between devices.
-
 ### Productivity Tools
-- **External Collaboration**: Open items in external editors with auto-sync back.
 - **Global Search**: Find anything by content, source app, or date.
 - **Sequential Paste**: Optimized workflow for high-frequency copy-paste tasks.
 
@@ -77,7 +61,7 @@ Eight built-in themes; four of them:
 ### Platform Support
 | Platform | Requirement | Output |
 | :--- | :--- | :--- |
-| **macOS** | macOS 10.15+ <br>(Apple Silicon / Intel) | `.dmg` / `.app` |
+| **Windows** | Windows 10/11 (x64) | `.exe` installer |
 
 [**Download TieZ →**](https://tiez.name666.top/)
 
