@@ -20,20 +20,7 @@ pub struct DbState {
     pub tag_repo: SqliteTagRepository,
 }
 
-const SENSITIVE_KEYS: &[&str] = &[
-    "mqtt_password",
-    "mqtt_username",
-    "ai_profiles",
-    "cloud_sync_api_key",
-    "cloud_sync_webdav_password",
-    "e2e_key",
-];
-
 pub const SENSITIVE_TAGS: &[&str] = &["sensitive", "密码", "password"];
-
-pub fn is_sensitive_key(key: &str) -> bool {
-    SENSITIVE_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key))
-}
 
 /// `app.sound_volume` as 0-1. Windows 0.3.x stored 0-100 (and can still sync
 /// such a value in), so anything above 1 is read as a percentage.
@@ -112,40 +99,6 @@ pub fn write_attachment(dir: &std::path::Path, bytes: &[u8], ext: &str) -> Optio
     Some(path)
 }
 
-/// Stable cross-platform fingerprint used by the cloud-sync wire protocol.
-///
-/// Keep this algorithm in sync with `tiez-mobile/src/lib/sync.ts`. Unlike
-/// `DefaultHasher`, FNV-1a 32-bit is deterministic across Rust/JavaScript and
-/// stays inside JavaScript's exact integer range.
-pub fn calc_sync_content_hash(content_type: &str, content: &str) -> i64 {
-    let owned_bytes;
-    let bytes: &[u8] = if content_type == "image" {
-        let trimmed = content.trim();
-        if !trimmed.starts_with("data:") && std::path::Path::new(trimmed).is_file() {
-            owned_bytes = std::fs::read(trimmed).unwrap_or_else(|_| trimmed.as_bytes().to_vec());
-            &owned_bytes
-        } else if let Some((_, payload)) = trimmed.split_once(',') {
-            use base64::Engine;
-            owned_bytes = base64::engine::general_purpose::STANDARD
-                .decode(payload.replace('\r', "").replace('\n', ""))
-                .unwrap_or_else(|_| trimmed.as_bytes().to_vec());
-            &owned_bytes
-        } else {
-            trimmed.as_bytes()
-        }
-    } else {
-        owned_bytes = normalize_text(content).into_bytes();
-        &owned_bytes
-    };
-
-    let mut hash = 2_166_136_261_u32;
-    for byte in bytes {
-        hash ^= u32::from(*byte);
-        hash = hash.wrapping_mul(16_777_619);
-    }
-    i64::from(if hash == 0 { 1 } else { hash })
-}
-
 pub fn calc_image_hash_from_bytes(bytes: &[u8]) -> Option<i64> {
     Some(stable_bytes_hash(bytes) as i64)
 }
@@ -181,9 +134,9 @@ pub fn init_db(path: &str) -> Result<Connection> {
         PRAGMA synchronous = NORMAL;
         PRAGMA auto_vacuum = FULL;
         PRAGMA busy_timeout = 5000;
-        PRAGMA mmap_size = 268435456;
+        PRAGMA mmap_size = 67108864;
         PRAGMA temp_store = MEMORY;
-        PRAGMA cache_size = -64000;
+        PRAGMA cache_size = -16000;
     ",
     )?;
 
@@ -272,6 +225,9 @@ pub(crate) const CHANGED_DEFAULTS: &[(&str, &str, &str)] = &[
     ("app.move_to_top_after_paste", "false", "true"),
     ("app.privacy_protection", "false", "true"),
     ("app.follow_mouse", "false", "true"),
+    // New installs start light: the WebView is released after idling, which
+    // is the largest memory saving. Existing installs keep what they chose.
+    ("app.light_mode_enabled", "true", "false"),
 ];
 
 /// Set on a fresh database; startup turns on launch at login once, then
@@ -332,7 +288,7 @@ pub fn seed_defaults(conn: &Connection) -> Result<()> {
     // opens without a window looks broken, so it starts off there.
     let _ = conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.silent_start', ?1)",
-        [if cfg!(target_os = "macos") { "false" } else { "true" }],
+        ["true"],
     );
     let _ = conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.delete_after_paste', 'false')",
@@ -340,14 +296,6 @@ pub fn seed_defaults(conn: &Connection) -> Result<()> {
     );
     let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('app.privacy_protection_kinds', 'phone,idcard,email,secret')", []);
     let _ = conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('app.privacy_protection_custom_rules', '')", []);
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.cleanup_rules', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.app_cleanup_policies', '[]')",
-        [],
-    );
 
     let _ = conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.sequential_mode', 'false')",
@@ -386,10 +334,6 @@ pub fn seed_defaults(conn: &Connection) -> Result<()> {
         [],
     );
     let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.hide_dock_icon', 'false')",
-        [],
-    );
-    let _ = conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.edge_docking', 'false')",
         [],
     );
@@ -415,206 +359,11 @@ pub fn seed_defaults(conn: &Connection) -> Result<()> {
     );
 
     let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.custom_background', '')",
-        [],
-    );
-    let _ = conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.surface_opacity', '50')",
         [],
     );
     let _ = conn.execute(
         "INSERT OR IGNORE INTO settings (key, value) VALUES ('app.notice_v028_shown', 'true')",
-        [],
-    );
-
-    // File transfer settings
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('file_transfer_auto_close', 'false')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('file_transfer_auto_copy', 'false')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('file_server_enabled', 'false')",
-        [],
-    );
-    let _ = conn.execute(
-        // 12345 is NetBus's port, so port scans name TieZ a trojan (#157).
-        // Only new installs get the new one; saved ports (and phones that
-        // bookmarked them) stay as they are.
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('file_server_port', '28462')",
-        [],
-    );
-
-    // MQTT settings
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_port', '443')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_enabled', 'false')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_server', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_username', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_password', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_topic', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_protocol', 'wss://')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_ssl', 'true')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_client_id', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_ws_path', '/mqtt')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('mqtt_notification_enabled', 'true')",
-        [],
-    );
-    let _ = conn.execute(
-        "UPDATE settings
-         SET value = ''
-         WHERE key = 'mqtt_server'
-           AND value = 'tiez.name666.top'
-           AND COALESCE((SELECT value FROM settings WHERE key = 'mqtt_enabled'), 'false') = 'false'",
-        [],
-    );
-    let _ = conn.execute(
-        "UPDATE settings
-         SET value = ''
-         WHERE key = 'mqtt_username'
-           AND value = 'tiezpublic'
-           AND COALESCE((SELECT value FROM settings WHERE key = 'mqtt_enabled'), 'false') = 'false'",
-        [],
-    );
-    let _ = conn.execute(
-        "UPDATE settings
-         SET value = ''
-         WHERE key = 'mqtt_password'
-           AND value = 'tiezmessage'
-           AND COALESCE((SELECT value FROM settings WHERE key = 'mqtt_enabled'), 'false') = 'false'",
-        [],
-    );
-
-    // Cloud sync settings
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_enabled', 'false')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_auto', 'true')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_provider', 'webdav')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_server', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_api_key', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_interval_sec', '120')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_snapshot_interval_min', '720')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_cursor', '0')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_settings_applied_at', '0')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_url', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_username', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_password', '')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_base_path', 'tiez-sync')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_content_prefs', '{\"text\":true,\"image\":true,\"file_path\":true,\"emoji\":true}')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_local_seq', '0')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_op_cursor_map', '{}')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_blob_cache', '{}')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_last_snapshot_push_at', '0')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_last_snapshot_pull_at', '0')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('cloud_sync_webdav_last_head_rebuild_at', '0')",
-        [],
-    );
-
-    // AI settings
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_enabled', 'false')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_target_lang', 'zh')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_enable_thinking', 'false')",
-        [],
-    );
-    let _ = conn.execute(
-        "INSERT OR IGNORE INTO settings (key, value) VALUES ('ai_thinking_budget', '1024')",
         [],
     );
 
@@ -688,24 +437,6 @@ mod tests {
                 entry_id INTEGER NOT NULL,
                 tag TEXT NOT NULL,
                 PRIMARY KEY (entry_id, tag)
-            )",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "CREATE TABLE cloud_sync_tombstones (
-                content_type TEXT NOT NULL,
-                content_hash INTEGER NOT NULL,
-                deleted_at INTEGER NOT NULL,
-                PRIMARY KEY (content_type, content_hash)
-            )",
-            [],
-        )
-        .unwrap();
-        conn.execute(
-            "CREATE TABLE cloud_sync_local_index (
-                sync_key TEXT PRIMARY KEY,
-                digest TEXT NOT NULL
             )",
             [],
         )
@@ -877,15 +608,6 @@ mod tests {
     }
 
     #[test]
-    fn sync_hash_is_stable_and_normalizes_line_endings() {
-        assert_eq!(calc_sync_content_hash("text", "hello"), 1_335_831_723);
-        assert_eq!(
-            calc_sync_content_hash("text", "line 1\r\nline 2"),
-            calc_sync_content_hash("text", "line 1\nline 2")
-        );
-    }
-
-    #[test]
     fn entry_files_are_found_after_the_data_folder_moved() {
         let root = std::env::temp_dir().join(format!("tiez-entry-file-{}", uuid::Uuid::new_v4()));
         let data_dir = root.join("com.tiez");
@@ -909,21 +631,4 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
-    #[test]
-    fn image_sync_hash_matches_file_and_data_url_representations() {
-        let path = std::env::temp_dir().join(format!("tiez-sync-hash-{}.png", std::process::id()));
-        let bytes = [0_u8, 1, 2, 3, 250, 251, 252];
-        std::fs::write(&path, bytes).expect("write hash fixture");
-        let data_url = format!(
-            "data:image/png;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        );
-
-        assert_eq!(
-            calc_sync_content_hash("image", &path.to_string_lossy()),
-            calc_sync_content_hash("image", &data_url)
-        );
-
-        let _ = std::fs::remove_file(path);
-    }
 }

@@ -12,6 +12,16 @@ use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
 
+/// Session-only entries (not yet persisted) kept in memory. The byte cap keeps
+/// a burst of large screenshots from growing the process without bound.
+const SESSION_HISTORY_BUDGET_BYTES: usize = 32 * 1024 * 1024;
+
+fn session_entry_bytes(entry: &ClipboardEntry) -> usize {
+    entry.content.len()
+        + entry.preview.len()
+        + entry.html_content.as_ref().map_or(0, |html| html.len())
+}
+
 #[derive(Debug, Clone)]
 pub enum ClipboardData {
     Text(String),
@@ -203,45 +213,6 @@ impl PipelineStage for TransformationStage {
         // Normalize line endings only; preserve leading/trailing whitespace (#97).
         entry.content = entry.content.replace("\r\n", "\n");
 
-        // App policies first: an image from an app set to "ignore" must not be
-        // written to disk at all (it used to be saved, then dropped, and left).
-        let app_cleanup_policies_raw = settings.app_cleanup_policies.lock().unwrap().clone();
-        if !app_cleanup_policies_raw.trim().is_empty() {
-            let app_cleanup_policies = parse_app_cleanup_policies(&app_cleanup_policies_raw);
-            for policy in app_cleanup_policies {
-                if !app_cleanup_policy_matches(
-                    &policy,
-                    &ctx.source_app,
-                    ctx.source_app_path.as_deref(),
-                    &entry.content_type,
-                ) {
-                    continue;
-                }
-
-                if policy.action.eq_ignore_ascii_case("ignore") {
-                    ctx.should_stop = true;
-                    return;
-                }
-
-                if is_text_type(&entry.content_type) && !policy.cleanup_rules.trim().is_empty() {
-                    let rules = parse_cleanup_rules(&policy.cleanup_rules);
-                    if !rules.is_empty() {
-                        let Some(cleaned) = apply_cleanup_rules(&entry.content, &rules) else {
-                            ctx.should_stop = true;
-                            return;
-                        };
-                        if cleaned.trim().is_empty() || cleaned == "__IGNORE_CAPTURE__" {
-                            ctx.should_stop = true;
-                            return;
-                        }
-                        entry.content = cleaned.replace("\r\n", "\n");
-                        entry.preview =
-                            build_entry_preview(&entry.content_type, &entry.content, None);
-                    }
-                }
-            }
-        }
-
         // Session-only mode keeps images out of the permanent attachments folder:
         // they live under session/ for this run only (see session_storage_root).
         let persistent = settings.persistent.load(Ordering::Relaxed);
@@ -285,25 +256,6 @@ impl PipelineStage for TransformationStage {
                             }
                         }
                     }
-                }
-            }
-        }
-
-        if is_text_type(&entry.content_type) {
-            let cleanup_rules_raw = settings.cleanup_rules.lock().unwrap().clone();
-            if !cleanup_rules_raw.trim().is_empty() {
-                let cleanup_rules = parse_cleanup_rules(&cleanup_rules_raw);
-                if !cleanup_rules.is_empty() {
-                    let Some(cleaned) = apply_cleanup_rules(&entry.content, &cleanup_rules) else {
-                        ctx.should_stop = true;
-                        return;
-                    };
-                    if cleaned.trim().is_empty() || cleaned == "__IGNORE_CAPTURE__" {
-                        ctx.should_stop = true;
-                        return;
-                    }
-                    entry.content = cleaned.replace("\r\n", "\n");
-                    entry.preview = build_entry_preview(&entry.content_type, &entry.content, None);
                 }
             }
         }
@@ -580,8 +532,13 @@ impl PipelineStage for PersistenceStage {
             let session_history = ctx.app_handle.state::<SessionHistory>();
             let mut session = session_history.0.lock().unwrap();
             session.push_back(entry.clone());
-            if session.len() > 500 {
+            // Session items can carry screenshots and full HTML. Cap by both
+            // count and bytes so a run of large copies cannot grow the
+            // process without bound.
+            let mut total: usize = session.iter().map(session_entry_bytes).sum();
+            while (session.len() > 500 || total > SESSION_HISTORY_BUDGET_BYTES) && session.len() > 1 {
                 if let Some(removed) = session.pop_front() {
+                    total = total.saturating_sub(session_entry_bytes(&removed));
                     let _ = ctx.app_handle.emit("clipboard-removed", removed.id);
                 }
             }
@@ -632,10 +589,6 @@ impl PipelineStage for DistributionStage {
         let _ = ctx
             .app_handle
             .emit("clipboard-updated", truncate_entry_for_ui(entry.clone()));
-
-        if settings.persistent.load(Ordering::Relaxed) && entry.id > 0 {
-            crate::services::cloud_sync::request_cloud_sync(ctx.app_handle.clone());
-        }
 
         if entry.is_external && entry.id != 0 {
             if let Some(path) =

@@ -495,6 +495,7 @@ pub unsafe extern "system" fn mouse_proc(n_code: i32, w_param: WPARAM, l_param: 
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(test)]
 struct HookHotkey {
     vk: u32,
     ctrl: bool,
@@ -545,6 +546,7 @@ pub(crate) fn recorded_key_name(vk: u32) -> String {
     }
 }
 
+#[cfg(test)]
 pub fn parse_hotkey_for_hook(hotkey: &str) -> Option<HookHotkey> {
     let parts: Vec<&str> = hotkey.split('+').collect();
     let mut vk = 0u32;

@@ -719,10 +719,8 @@ fn update_database_with_changes(
             "Clipboard entry updated and clipboard-updated event emitted for id: {}",
             id
         );
-        crate::services::cloud_sync::request_cloud_sync(app_handle.clone());
     } else {
         let _ = app_handle.emit("clipboard-changed", id);
-        crate::services::cloud_sync::request_cloud_sync(app_handle.clone());
     }
 }
 

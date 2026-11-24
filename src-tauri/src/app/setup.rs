@@ -44,7 +44,6 @@ fn register_macos_wake_hotkey_refresh(app_handle: AppHandle) {
 
     let center = NSWorkspace::sharedWorkspace().notificationCenter();
     let wake_handler = RcBlock::new(move |_notification: NonNull<NSNotification>| {
-        crate::services::network_recovery::request_wake_recovery();
         let app_handle = app_handle.clone();
         std::thread::spawn(move || {
             // macOS may need a short moment to restore Carbon event hotkeys after wake.
@@ -322,14 +321,11 @@ pub struct StartupSettings {
     pub capture_rich_text: bool,
     pub rich_text_snapshot_preview: bool,
     pub deduplicate: bool,
-    pub auto_copy_file: bool,
     pub silent_start: bool,
     pub delete_after_paste: bool,
     pub privacy_protection: bool,
     pub privacy_kinds: String,
     pub privacy_custom: String,
-    pub cleanup_rules: String,
-    pub app_cleanup_policies: String,
     pub sequential_mode: bool,
     pub sequential_hotkey: String,
     pub plain_paste_hotkey: String,
@@ -338,7 +334,6 @@ pub struct StartupSettings {
     pub sound_enabled: bool,
     pub paste_sound_enabled: bool,
     pub hide_tray_icon: bool,
-    pub hide_dock_icon: bool,
     pub follow_mouse: bool,
     pub edge_docking: bool,
     pub last_edge_dock: String,
@@ -349,177 +344,84 @@ pub struct StartupSettings {
     pub arrow_key_selection: bool,
     pub light_mode_enabled: bool,
     pub light_mode_idle_minutes: u64,
-    pub auto_close_server: bool,
     pub sound_volume: f64,
 }
 
 pub(crate) fn load_settings(repo: &impl SettingsRepository) -> StartupSettings {
+    // One read of the whole settings table; startup used to take about forty
+    // separate locks and queries.
+    let all = repo.get_all().unwrap_or_default();
     StartupSettings {
-        theme: repo
+        theme: all
             .get("app.theme")
-            .unwrap_or(Some(crate::build_config::default_theme_id().to_string()))
+            .cloned()
             .unwrap_or_else(|| crate::build_config::default_theme_id().to_string()),
-        persistent: repo
-            .get("app.persistent")
-            .unwrap_or(Some("true".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(true),
-        capture_files: repo
-            .get("app.capture_files")
-            .unwrap_or(Some("true".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(true),
-        capture_rich_text: repo
-            .get("app.capture_rich_text")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        rich_text_snapshot_preview: repo
+        persistent: all.get("app.persistent").map(|v| v == "true").unwrap_or(true),
+        capture_files: all.get("app.capture_files").map(|v| v == "true").unwrap_or(true),
+        capture_rich_text: all.get("app.capture_rich_text").map(|v| v == "true").unwrap_or(false),
+        rich_text_snapshot_preview: all
             .get("app.rich_text_snapshot_preview")
-            .unwrap_or(Some("false".to_string()))
             .map(|v| v == "true")
             .unwrap_or(false),
-        deduplicate: repo
-            .get("app.deduplicate")
-            .unwrap_or(Some("true".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(true),
-        auto_copy_file: repo
-            .get("file_transfer_auto_copy")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        silent_start: repo
-            .get("app.silent_start")
-            .unwrap_or(Some("true".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(true),
-        delete_after_paste: repo
-            .get("app.delete_after_paste")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        privacy_protection: repo
-            .get("app.privacy_protection")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        privacy_kinds: repo
+        deduplicate: all.get("app.deduplicate").map(|v| v == "true").unwrap_or(true),
+        silent_start: all.get("app.silent_start").map(|v| v == "true").unwrap_or(true),
+        delete_after_paste: all.get("app.delete_after_paste").map(|v| v == "true").unwrap_or(false),
+        privacy_protection: all.get("app.privacy_protection").map(|v| v == "true").unwrap_or(false),
+        privacy_kinds: all
             .get("app.privacy_protection_kinds")
-            .unwrap_or(Some("phone,idcard,email,secret".to_string()))
-            .unwrap_or("phone,idcard,email,secret".to_string()),
-        privacy_custom: repo
+            .cloned()
+            .unwrap_or_else(|| "phone,idcard,email,secret".to_string()),
+        privacy_custom: all
             .get("app.privacy_protection_custom_rules")
-            .unwrap_or(Some("".to_string()))
-            .unwrap_or("".to_string()),
-        cleanup_rules: repo
-            .get("app.cleanup_rules")
-            .unwrap_or(Some("".to_string()))
-            .unwrap_or("".to_string()),
-        app_cleanup_policies: repo
-            .get("app.app_cleanup_policies")
-            .unwrap_or(Some("[]".to_string()))
-            .unwrap_or("[]".to_string()),
-        sequential_mode: repo
-            .get("app.sequential_mode")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        sequential_hotkey: repo
-            .get("app.sequential_hotkey")
-            .unwrap_or(Some("Alt+V".to_string()))
-            .unwrap_or("Alt+V".to_string()),
-        plain_paste_hotkey: repo
-            .get("app.plain_paste_hotkey")
-            .ok()
-            .flatten()
+            .cloned()
             .unwrap_or_default(),
-        search_hotkey: repo
+        sequential_mode: all.get("app.sequential_mode").map(|v| v == "true").unwrap_or(false),
+        sequential_hotkey: all
+            .get("app.sequential_hotkey")
+            .cloned()
+            .unwrap_or_else(|| "Alt+V".to_string()),
+        plain_paste_hotkey: all.get("app.plain_paste_hotkey").cloned().unwrap_or_default(),
+        search_hotkey: all
             .get("app.search_hotkey")
-            .unwrap_or(Some("Alt+F".to_string()))
-            .unwrap_or("Alt+F".to_string()),
-        quick_paste_modifier: repo
+            .cloned()
+            .unwrap_or_else(|| "Alt+F".to_string()),
+        quick_paste_modifier: all
             .get("app.quick_paste_modifier")
-            .unwrap_or(Some("disabled".to_string()))
-            .unwrap_or("disabled".to_string()),
-        sound_enabled: repo
-            .get("app.sound_enabled")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        paste_sound_enabled: repo
-            .get("app.sound_paste_enabled")
-            .unwrap_or(Some("true".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(true),
-        hide_tray_icon: repo
-            .get("app.hide_tray_icon")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        hide_dock_icon: repo
-            .get("app.hide_dock_icon")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        follow_mouse: repo
-            .get("app.follow_mouse")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        edge_docking: repo
-            .get("app.edge_docking")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        last_edge_dock: repo
+            .cloned()
+            .unwrap_or_else(|| "disabled".to_string()),
+        sound_enabled: all.get("app.sound_enabled").map(|v| v == "true").unwrap_or(false),
+        paste_sound_enabled: all.get("app.sound_paste_enabled").map(|v| v == "true").unwrap_or(true),
+        hide_tray_icon: all.get("app.hide_tray_icon").map(|v| v == "true").unwrap_or(false),
+        follow_mouse: all.get("app.follow_mouse").map(|v| v == "true").unwrap_or(false),
+        edge_docking: all.get("app.edge_docking").map(|v| v == "true").unwrap_or(false),
+        last_edge_dock: all
             .get("app.last_edge_dock")
-            .unwrap_or(Some("none".to_string()))
-            .unwrap_or("none".to_string()),
-        window_pinned: repo
-            .get("app.window_pinned")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        window_width: repo
+            .cloned()
+            .unwrap_or_else(|| "none".to_string()),
+        window_pinned: all.get("app.window_pinned").map(|v| v == "true").unwrap_or(false),
+        window_width: all
             .get("app.window_width")
-            .ok()
-            .flatten()
             .and_then(|v| v.parse::<u32>().ok()),
-        window_height: repo
+        window_height: all
             .get("app.window_height")
-            .ok()
-            .flatten()
             .and_then(|v| v.parse::<u32>().ok()),
-        main_hotkey: repo
+        main_hotkey: all
             .get("app.hotkey")
-            .unwrap_or(Some("Alt+C".to_string()))
-            .unwrap_or("Alt+C".to_string()),
-        arrow_key_selection: repo
+            .cloned()
+            .unwrap_or_else(|| "Alt+C".to_string()),
+        arrow_key_selection: all
             .get("app.arrow_key_selection")
-            .unwrap_or(Some("true".to_string()))
             .map(|v| v == "true")
             .unwrap_or(true),
-        light_mode_enabled: repo
-            .get("app.light_mode_enabled")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        light_mode_idle_minutes: repo
+        light_mode_enabled: all.get("app.light_mode_enabled").map(|v| v == "true").unwrap_or(false),
+        light_mode_idle_minutes: all
             .get("app.light_mode_idle_minutes")
-            .unwrap_or(Some("15".to_string()))
             .and_then(|v| v.parse::<u64>().ok())
             .map(|v| v.clamp(1, 240))
             .unwrap_or(15),
-        auto_close_server: repo
-            .get("file_transfer_auto_close")
-            .unwrap_or(Some("false".to_string()))
-            .map(|v| v == "true")
-            .unwrap_or(false),
-        sound_volume: repo
+        sound_volume: all
             .get("app.sound_volume")
-            .unwrap_or(Some("1.0".to_string()))
-            .and_then(|v| crate::database::sound_volume_from_setting(&v))
+            .and_then(|v| crate::database::sound_volume_from_setting(v))
             .unwrap_or(1.0),
     }
 }
@@ -548,24 +450,6 @@ fn setup_state(
     crate::services::clipboard::start_session_file_sweeper(app.handle().clone(), &app_dir);
     crate::app::commands::thumbnail_cmd::init_thumbnail_cache(app.handle());
     app.manage(AppDataDir(std::sync::Mutex::new(app_dir)));
-    app.manage(crate::services::file_transfer::ChatState::default());
-    app.manage(crate::services::file_transfer::SharedFileState(
-        std::sync::Mutex::new(std::collections::HashMap::new()),
-    ));
-    app.manage(crate::services::file_transfer::ServerInfo {
-        port: std::sync::atomic::AtomicU16::new(0),
-        ip: std::sync::Mutex::new(String::new()),
-        access_token: std::sync::Mutex::new(String::new()),
-        lan_key: std::sync::Mutex::new(None),
-    });
-    app.manage(crate::services::file_transfer::UploadSessions::default());
-    app.manage(crate::services::file_transfer::ServerActivityState::default());
-    app.manage(crate::services::file_transfer::WsBroadcaster(
-        std::sync::Mutex::new(None),
-    ));
-    app.manage(crate::services::file_transfer::OnlineDevices(
-        std::sync::Mutex::new(std::collections::HashMap::new()),
-    ));
     app.manage(PasteQueue::default());
 }
 
@@ -574,12 +458,10 @@ pub(crate) fn settings_state_from(s: &StartupSettings) -> SettingsState {
     SettingsState {
         deduplicate: AtomicBool::new(s.deduplicate),
         persistent: AtomicBool::new(s.persistent),
-        file_server_auto_close: AtomicBool::new(s.auto_close_server),
         theme: std::sync::Mutex::new(s.theme.clone()),
         capture_files: AtomicBool::new(s.capture_files),
         capture_rich_text: AtomicBool::new(s.capture_rich_text),
         rich_text_snapshot_preview: AtomicBool::new(s.rich_text_snapshot_preview),
-        auto_copy_file: AtomicBool::new(s.auto_copy_file),
         silent_start: AtomicBool::new(s.silent_start),
         delete_after_paste: AtomicBool::new(s.delete_after_paste),
         privacy_protection: AtomicBool::new(s.privacy_protection),
@@ -595,8 +477,6 @@ pub(crate) fn settings_state_from(s: &StartupSettings) -> SettingsState {
                 .map(|x| x.trim().to_string())
                 .collect(),
         ),
-        cleanup_rules: std::sync::Mutex::new(s.cleanup_rules.clone()),
-        app_cleanup_policies: std::sync::Mutex::new(s.app_cleanup_policies.clone()),
         sequential_mode: AtomicBool::new(s.sequential_mode),
         sequential_paste_hotkey: std::sync::Mutex::new(s.sequential_hotkey.clone()),
         plain_paste_hotkey: std::sync::Mutex::new(s.plain_paste_hotkey.clone()),
@@ -605,7 +485,6 @@ pub(crate) fn settings_state_from(s: &StartupSettings) -> SettingsState {
         sound_enabled: AtomicBool::new(s.sound_enabled),
         paste_sound_enabled: AtomicBool::new(s.paste_sound_enabled),
         hide_tray_icon: AtomicBool::new(s.hide_tray_icon),
-        hide_dock_icon: AtomicBool::new(s.hide_dock_icon),
         follow_mouse: AtomicBool::new(s.follow_mouse),
         edge_docking: AtomicBool::new(s.edge_docking),
         arrow_key_selection: AtomicBool::new(s.arrow_key_selection),
@@ -643,6 +522,7 @@ fn parse_dock_token(token: &str) -> i32 {
 #[cfg(not(target_os = "macos"))]
 pub fn persist_edge_dock(_app_handle: &AppHandle, _dock: i32) {}
 
+#[cfg(target_os = "macos")]
 fn dock_token_for(dock: i32) -> &'static str {
     match dock {
         1 => "top",
@@ -724,6 +604,8 @@ pub fn is_window_edge_tucked(window: &tauri::WebviewWindow) -> bool {
     let screen_top = screen.y;
     let screen_right = screen.x + screen_size.width as i32;
     let screen_bottom = screen.y + screen_size.height as i32;
+    #[cfg(not(target_os = "macos"))]
+    let _ = (rect_bottom, screen_bottom);
 
     #[cfg(target_os = "macos")]
     {
@@ -1200,9 +1082,6 @@ fn start_services(app: &App, s: &StartupSettings, app_handle: AppHandle) {
     if s.sound_enabled {
         crate::services::ui_sound::preload_ui_sounds();
     }
-    crate::services::mqtt_sub::start_mqtt_client(app_handle.clone());
-    crate::services::cloud_sync::start_cloud_sync_client(app_handle.clone());
-    crate::services::network_recovery::start_network_recovery(app_handle.clone());
     start_edge_docking_monitor(app_handle.clone());
     crate::app::light_mode::start_idle_watcher(app_handle.clone());
     crate::app::light_mode::seed_hidden_if_needed(&app_handle);
@@ -1214,23 +1093,6 @@ fn start_services(app: &App, s: &StartupSettings, app_handle: AppHandle) {
     #[cfg(target_os = "windows")]
     if crate::app::commands::system_cmd::check_is_admin() {
         std::thread::spawn(crate::infrastructure::windows_api::elevated_autostart::refresh_outdated_task);
-    }
-    if db_state
-        .settings_repo
-        .get("file_server_enabled")
-        .unwrap_or(Some("false".to_string()))
-        == Some("true".to_string())
-    {
-        let port = db_state
-            .settings_repo
-            .get("file_server_port")
-            .unwrap_or(None)
-            .and_then(|x| x.parse::<u16>().ok());
-
-        let h = app_handle.clone();
-        tauri::async_runtime::spawn(async move {
-            let _ = crate::services::file_transfer::toggle_file_server(h, true, port).await;
-        });
     }
 
     // Anonymous Analytics

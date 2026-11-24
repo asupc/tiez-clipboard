@@ -156,15 +156,6 @@ fn rehide_tray_icon(reason: &'static str, delays_ms: &'static [u64]) {
 /// Wake-from-sleep, Explorer-restart and session (unlock, Remote Desktop) notifications.
 #[cfg(target_os = "windows")]
 fn handle_system_message(msg: u32, wparam: WPARAM) {
-    use windows::Win32::UI::WindowsAndMessaging::{
-        PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMECRITICAL, PBT_APMRESUMESUSPEND,
-        WM_POWERBROADCAST,
-    };
-    if msg == WM_POWERBROADCAST
-        && matches!(wparam.0 as u32, PBT_APMRESUMEAUTOMATIC | PBT_APMRESUMECRITICAL | PBT_APMRESUMESUSPEND)
-    {
-        crate::services::network_recovery::request_wake_recovery();
-    }
     let taskbar_msg = TASKBAR_CREATED_MSG.load(Ordering::Relaxed);
     if msg != 0 && msg == taskbar_msg {
         rehide_tray_icon("Explorer restart", &[1500]);

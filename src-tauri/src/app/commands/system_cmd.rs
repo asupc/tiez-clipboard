@@ -2,7 +2,6 @@ use crate::app_state::AppDataDir;
 use crate::error::{AppError, AppResult};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json;
-use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
 fn open_path_in_file_manager(path: &std::path::Path) -> AppResult<()> {
@@ -103,19 +102,6 @@ fn open_path_in_file_manager(path: &std::path::Path) -> AppResult<()> {
     }
 }
 
-fn content_type_to_ext(content_type: &str) -> String {
-    let normalized = content_type.trim().to_ascii_lowercase();
-    match normalized.as_str() {
-        "text" | "code" => "txt".to_string(),
-        "rich_text" => "html".to_string(),
-        "image" => "png".to_string(),
-        "video" => "mp4".to_string(),
-        "url" => "html".to_string(),
-        other if !other.is_empty() => other.to_string(),
-        _ => "txt".to_string(),
-    }
-}
-
 #[tauri::command]
 pub async fn scan_installed_apps() -> Vec<serde_json::Value> {
     #[cfg(target_os = "windows")]
@@ -134,67 +120,6 @@ pub async fn scan_installed_apps() -> Vec<serde_json::Value> {
     }
     #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     {
-        Vec::new()
-    }
-}
-
-#[tauri::command]
-#[allow(non_snake_case)]
-pub fn get_system_default_app(contentType: String) -> String {
-    let ext = content_type_to_ext(&contentType);
-    #[cfg(target_os = "windows")]
-    {
-        return crate::infrastructure::windows_api::apps::get_system_default_app(contentType)
-            .unwrap_or_default();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let ext = macos_open_with_key(&ext, Some(&contentType));
-        return crate::infrastructure::macos_api::apps::get_system_default_app(ext);
-    }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        let _ = ext;
-        String::new()
-    }
-}
-
-/// Link entries open in the browser, so on macOS their apps are the
-/// browsers rather than everything that opens .html files.
-#[cfg(target_os = "macos")]
-fn macos_open_with_key<'a>(extension: &'a str, content_type: Option<&str>) -> &'a str {
-    if content_type.is_some_and(|t| t.eq_ignore_ascii_case("url")) {
-        crate::infrastructure::macos_api::apps::WEB_LINK
-    } else {
-        extension
-    }
-}
-
-/// `content_type`: the entry type the apps are for (macOS uses it for links).
-#[tauri::command]
-pub async fn get_associated_apps(
-    extension: String,
-    content_type: Option<String>,
-) -> Vec<serde_json::Value> {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = content_type;
-        match crate::infrastructure::windows_api::apps::get_associated_apps(extension).await {
-            Ok(apps) => apps
-                .into_iter()
-                .filter_map(|app| serde_json::to_value(app).ok())
-                .collect(),
-            Err(_) => Vec::new(),
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let key = macos_open_with_key(&extension, content_type.as_deref());
-        crate::infrastructure::macos_api::apps::get_associated_apps(key)
-    }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        let _ = (extension, content_type);
         Vec::new()
     }
 }
@@ -256,65 +181,6 @@ pub fn open_folder(path: String) -> AppResult<()> {
 pub fn open_data_folder(state: State<'_, AppDataDir>) -> AppResult<()> {
     let path = state.0.lock().unwrap();
     open_path_in_file_manager(&path)
-}
-
-#[tauri::command]
-pub fn open_file_with_default_app(file_path: String) -> AppResult<()> {
-    use std::process::Command;
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("explorer")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| AppError::Internal(format!("Failed to open file: {}", e)))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| AppError::Internal(format!("Failed to open file: {}", e)))?;
-    }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        Command::new("xdg-open")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| AppError::Internal(format!("Failed to open file: {}", e)))?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub fn open_file_location(file_path: String) -> AppResult<()> {
-    use std::process::Command;
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("explorer")
-            .arg("/select,")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| AppError::Internal(format!("Failed to open file location: {}", e)))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg("-R")
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| AppError::Internal(format!("Failed to open file location: {}", e)))?;
-    }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        let path = std::path::Path::new(&file_path);
-        if let Some(parent) = path.parent() {
-            Command::new("xdg-open")
-                .arg(parent)
-                .spawn()
-                .map_err(|e| AppError::Internal(format!("Failed to open file location: {}", e)))?;
-        }
-    }
-    Ok(())
 }
 
 #[tauri::command]

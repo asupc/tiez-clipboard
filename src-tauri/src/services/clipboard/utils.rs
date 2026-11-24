@@ -991,12 +991,14 @@ pub fn infer_rich_html_from_plain_text(
     None
 }
 
+#[cfg(any(test, target_os = "macos"))]
 pub struct ResolvedClipboardCapture {
     pub text: String,
     pub html: Option<String>,
 }
 
 /// Build capturable text/html from platform clipboard fragments (WPS/Office often omit plain text).
+#[cfg(any(test, target_os = "macos"))]
 pub fn resolve_clipboard_text_capture(
     raw_text: Option<&str>,
     raw_html: Option<&str>,
@@ -1643,15 +1645,15 @@ pub fn truncate_html_for_preview(html: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_cleanup_policy_matches, apply_cleanup_rules, attach_rich_image_fallback,
+        attach_rich_image_fallback,
         attach_rich_named_formats, build_entry_preview, collapse_preview_whitespace,
         derive_rich_text_content, entry_matches_search, extract_animated_image_data_url_from_html,
         extract_animated_image_data_url_from_text, extract_first_image_data_url_from_html,
         infer_rich_html_from_plain_text, normalize_clipboard_line_endings,
-        normalize_clipboard_plain_text, parse_app_cleanup_policies, parse_cf_html,
-        html_is_image_only, parse_cleanup_rules, plain_text_from_tabular_html, sanitize_tabular_html_for_paste,
+        normalize_clipboard_plain_text, parse_cf_html,
+        html_is_image_only, plain_text_from_tabular_html, sanitize_tabular_html_for_paste,
         split_rich_html_and_image_fallback, split_rich_html_and_named_formats,
-        truncate_html_for_preview, visible_whitespace_preview, AppCleanupPolicy, CleanupAction,
+        truncate_html_for_preview, visible_whitespace_preview,
         HTML_TRUNCATION_SUFFIX,
     };
     use crate::domain::models::ClipboardEntry;
@@ -2295,142 +2297,7 @@ mod tests {
         assert_eq!(preview, "ddd");
     }
 
-    #[test]
-    fn cleanup_rules_parse_and_apply_replacements() {
-        let rules = parse_cleanup_rules(
-            r"(?i)token\s*:\s*\S+ => token: [REDACTED]
-\b1[3-9]\d{9}\b => [PHONE]",
-        );
 
-        let cleaned = apply_cleanup_rules("token: abc123 13812345678", &rules);
-
-        assert_eq!(cleaned.as_deref(), Some("token: [REDACTED] [PHONE]"));
-    }
-
-    #[test]
-    fn cleanup_rule_marked_ignore_skips_matching_content() {
-        // As the settings page writes it; the leftover replacement is unused.
-        let rules = parse_cleanup_rules(
-            "# label: API keys\n# action: ignore\nsk-[A-Za-z0-9]+ => old\n\n(?i)token => [T]",
-        );
-
-        assert_eq!(rules.len(), 2);
-        assert_eq!(rules[0].1, CleanupAction::Ignore);
-        assert_eq!(apply_cleanup_rules("key sk-abc123", &rules), None);
-        assert_eq!(
-            apply_cleanup_rules("Token here", &rules).as_deref(),
-            Some("[T] here")
-        );
-    }
-
-    #[test]
-    fn app_cleanup_policy_parse_filters_disabled_or_unbound_items() {
-        let policies = parse_app_cleanup_policies(
-            r#"[
-                {"id":"1","enabled":true,"appName":"WeChat","contentTypes":["text"]},
-                {"id":"2","enabled":false,"appName":"Slack","contentTypes":["text"]},
-                {"id":"3","enabled":true,"contentTypes":["text"]}
-            ]"#,
-        );
-
-        assert_eq!(policies.len(), 1);
-        assert_eq!(policies[0].id, "1");
-    }
-
-    #[test]
-    fn app_cleanup_policy_match_prefers_path_and_respects_content_type() {
-        let policy = AppCleanupPolicy {
-            id: "1".to_string(),
-            enabled: true,
-            app_name: "WeChat".to_string(),
-            app_path: "C:\\Program Files\\Tencent\\WeChat.exe".to_string(),
-            action: "clean".to_string(),
-            content_types: vec!["text".to_string(), "url".to_string()],
-            cleanup_rules: String::new(),
-        };
-
-        assert!(app_cleanup_policy_matches(
-            &policy,
-            "Different Name",
-            Some("C:\\Program Files\\Tencent\\WeChat.exe"),
-            "text",
-        ));
-        assert!(!app_cleanup_policy_matches(
-            &policy,
-            "WeChat",
-            Some("C:\\Program Files\\Tencent\\WeChat.exe"),
-            "image",
-        ));
-    }
-
-    #[test]
-    fn app_ignore_policy_covers_every_content_type() {
-        // Policies saved by the settings UI carry the text-only default list.
-        let policies = parse_app_cleanup_policies(
-            r#"[{"id":"1","enabled":true,"appName":"WeChat",
-                "appPath":"C:\\Program Files\\Tencent\\WeChat.exe","action":"ignore",
-                "contentTypes":["text","code","url","rich_text"],"cleanupRules":""}]"#,
-        );
-        assert_eq!(policies.len(), 1);
-        let path = Some("C:\\Program Files\\Tencent\\WeChat.exe");
-        for kind in ["text", "code", "url", "rich_text", "image", "file", "video"] {
-            assert!(
-                app_cleanup_policy_matches(&policies[0], "WeChat", path, kind),
-                "ignore policy should match {kind}"
-            );
-        }
-        // A different app is still recorded.
-        assert!(!app_cleanup_policy_matches(
-            &policies[0],
-            "Notepad",
-            Some("C:\\Windows\\notepad.exe"),
-            "image",
-        ));
-    }
-
-    #[test]
-    fn app_cleanup_policy_match_accepts_executable_name_variant() {
-        let policy = AppCleanupPolicy {
-            id: "1".to_string(),
-            enabled: true,
-            app_name: "Codex".to_string(),
-            app_path: String::new(),
-            action: "clean".to_string(),
-            content_types: vec!["text".to_string()],
-            cleanup_rules: String::new(),
-        };
-
-        assert!(app_cleanup_policy_matches(
-            &policy,
-            "Codex.exe",
-            Some(
-                "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.305.950.0_x64__2p2nqsd0c76g0\\app\\Codex.exe",
-            ),
-            "text",
-        ));
-    }
-
-    #[test]
-    fn app_cleanup_policy_match_accepts_windows_app_id_variant() {
-        let policy = AppCleanupPolicy {
-            id: "1".to_string(),
-            enabled: true,
-            app_name: "Codex".to_string(),
-            app_path: "OpenAI.Codex_2p2nqsd0c76g0!App".to_string(),
-            action: "clean".to_string(),
-            content_types: vec!["text".to_string()],
-            cleanup_rules: String::new(),
-        };
-
-        assert!(app_cleanup_policy_matches(
-            &policy,
-            "Codex.exe",
-            Some(
-                "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.305.950.0_x64__2p2nqsd0c76g0\\app\\Codex.exe",
-            ),
-            "text",
-        ));
-    }
 }
 
 pub fn detect_content_type(text: &str) -> String {
@@ -2570,249 +2437,6 @@ pub fn contains_sensitive_info(text: &str, kinds: &[String], custom_rules: &[Str
                 return true;
             }
         }
-    }
-    false
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CleanupAction {
-    Replace(String),
-    /// 「不记录」: content the pattern matches is not recorded.
-    Ignore,
-}
-
-/// One rule per `pattern => replacement` line. A `# action: ignore` comment
-/// line (written by the settings page) applies to the rule line after it.
-pub fn parse_cleanup_rules(raw_rules: &str) -> Vec<(Regex, CleanupAction)> {
-    let mut rules = Vec::new();
-    let mut ignore_next = false;
-    for line in raw_rules.lines().map(str::trim) {
-        if line.is_empty() {
-            continue;
-        }
-        if let Some(comment) = line.strip_prefix('#') {
-            if let Some((key, value)) = comment.split_once(':') {
-                if key.trim().eq_ignore_ascii_case("action") {
-                    ignore_next = value.trim().eq_ignore_ascii_case("ignore");
-                }
-            }
-            continue;
-        }
-
-        let ignore = std::mem::take(&mut ignore_next);
-        let Some((pattern, replacement)) = line.split_once("=>") else {
-            continue;
-        };
-        let pattern = pattern.trim();
-        if pattern.is_empty() {
-            continue;
-        }
-        let action = if ignore {
-            CleanupAction::Ignore
-        } else {
-            CleanupAction::Replace(
-                replacement
-                    .trim()
-                    .replace(r"\n", "\n")
-                    .replace(r"\r", "\r")
-                    .replace(r"\t", "\t"),
-            )
-        };
-        if let Ok(regex) = Regex::new(pattern) {
-            rules.push((regex, action));
-        }
-    }
-    rules
-}
-
-/// Runs the rules top to bottom; None when an ignore rule matches.
-pub fn apply_cleanup_rules(text: &str, rules: &[(Regex, CleanupAction)]) -> Option<String> {
-    let mut text = text.to_string();
-    for (regex, action) in rules {
-        match action {
-            CleanupAction::Ignore if regex.is_match(&text) => return None,
-            CleanupAction::Ignore => {}
-            CleanupAction::Replace(replacement) => {
-                text = regex.replace_all(&text, replacement.as_str()).into_owned();
-            }
-        }
-    }
-    Some(text)
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AppCleanupPolicy {
-    #[cfg_attr(not(test), allow(dead_code))]
-    #[serde(default)]
-    pub id: String,
-    #[serde(default = "default_policy_enabled")]
-    pub enabled: bool,
-    #[serde(default)]
-    pub app_name: String,
-    #[serde(default)]
-    pub app_path: String,
-    #[serde(default = "default_policy_action")]
-    pub action: String,
-    #[serde(default = "default_policy_content_types")]
-    pub content_types: Vec<String>,
-    #[serde(default)]
-    pub cleanup_rules: String,
-}
-
-fn default_policy_enabled() -> bool {
-    true
-}
-
-fn default_policy_action() -> String {
-    "clean".to_string()
-}
-
-fn default_policy_content_types() -> Vec<String> {
-    vec![
-        "text".to_string(),
-        "code".to_string(),
-        "url".to_string(),
-        "rich_text".to_string(),
-        "image".to_string(),
-        "file".to_string(),
-        "video".to_string(),
-    ]
-}
-
-fn normalize_executable_name(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let segment = trimmed.rsplit(['\\', '/']).next().unwrap_or(trimmed).trim();
-    if segment.is_empty() {
-        return None;
-    }
-
-    let lower = segment.to_ascii_lowercase();
-    let normalized = lower.strip_suffix(".exe").unwrap_or(&lower).trim();
-    if normalized.is_empty() {
-        None
-    } else {
-        Some(normalized.to_string())
-    }
-}
-
-fn executable_name_matches(left: &str, right: &str) -> bool {
-    match (
-        normalize_executable_name(left),
-        normalize_executable_name(right),
-    ) {
-        (Some(left), Some(right)) => left == right,
-        _ => false,
-    }
-}
-
-fn app_id_matches_process_path(app_id: &str, process_path: &str) -> bool {
-    let trimmed_app_id = app_id.trim();
-    let trimmed_process_path = process_path.trim();
-    if trimmed_app_id.is_empty() || trimmed_process_path.is_empty() || !trimmed_app_id.contains('!')
-    {
-        return false;
-    }
-
-    let package_family = trimmed_app_id.split('!').next().unwrap_or("").trim();
-    let Some((package_name, publisher_id)) = package_family.rsplit_once('_') else {
-        return false;
-    };
-
-    let normalized_path = trimmed_process_path.replace('/', "\\").to_ascii_lowercase();
-    let package_name = package_name.trim().to_ascii_lowercase();
-    let publisher_id = publisher_id.trim().to_ascii_lowercase();
-
-    !package_name.is_empty()
-        && !publisher_id.is_empty()
-        && normalized_path.contains(&package_name)
-        && normalized_path.contains(&publisher_id)
-}
-
-pub fn parse_app_cleanup_policies(raw_policies: &str) -> Vec<AppCleanupPolicy> {
-    serde_json::from_str::<Vec<AppCleanupPolicy>>(raw_policies)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|policy| {
-            policy.enabled
-                && (!policy.app_path.trim().is_empty() || !policy.app_name.trim().is_empty())
-        })
-        .collect()
-}
-
-pub fn app_cleanup_policy_matches(
-    policy: &AppCleanupPolicy,
-    source_app: &str,
-    source_app_path: Option<&str>,
-    content_type: &str,
-) -> bool {
-    let allowed = if policy.action.eq_ignore_ascii_case("ignore") {
-        // "Don't record this app" covers every kind of content. contentTypes is
-        // not editable in the UI and saved policies default to text kinds only,
-        // so honouring it here let images and files through.
-        true
-    } else {
-        !policy.content_types.is_empty()
-            && policy
-                .content_types
-                .iter()
-                .any(|kind| kind.eq_ignore_ascii_case(content_type))
-    };
-    if !allowed {
-        return false;
-    }
-
-    let source_app = source_app.trim();
-    let source_app_path = source_app_path.unwrap_or("").trim();
-    let policy_path = policy.app_path.trim();
-    if !policy_path.is_empty() && !source_app_path.is_empty() {
-        if policy_path.len() >= 2 && policy_path.starts_with('/') && policy_path.ends_with('/') {
-            let re_str = &policy_path[1..policy_path.len() - 1];
-            if let Ok(re) = Regex::new(re_str) {
-                if re.is_match(source_app_path) {
-                    return true;
-                }
-            }
-        }
-        if policy_path.eq_ignore_ascii_case(source_app_path) {
-            return true;
-        }
-        if executable_name_matches(policy_path, source_app_path)
-            || app_id_matches_process_path(policy_path, source_app_path)
-        {
-            return true;
-        }
-    }
-
-    let policy_name = policy.app_name.trim();
-    if !policy_name.is_empty() {
-        if policy_name.len() >= 2 && policy_name.starts_with('/') && policy_name.ends_with('/') {
-            let re_str = &policy_name[1..policy_name.len() - 1];
-            if let Ok(re) = Regex::new(re_str) {
-                if re.is_match(source_app) {
-                    return true;
-                }
-            }
-        }
-        if policy_name.eq_ignore_ascii_case(source_app) {
-            return true;
-        }
-        if executable_name_matches(policy_name, source_app)
-            || executable_name_matches(policy_name, source_app_path)
-        {
-            return true;
-        }
-    }
-
-    if !policy_path.is_empty()
-        && !source_app.is_empty()
-        && executable_name_matches(policy_path, source_app)
-    {
-        return true;
     }
     false
 }

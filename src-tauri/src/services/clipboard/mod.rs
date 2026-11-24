@@ -33,6 +33,7 @@ const MAX_MACOS_TEXT_BYTES: usize = 8 * 1024 * 1024;
 /// Larger clipboard images are not recorded: they would be held, hashed and
 /// re-encoded on the listener thread and stall later copies.
 const MAX_CAPTURE_IMAGE_BYTES: usize = 64 * 1024 * 1024;
+#[cfg(target_os = "macos")]
 const MAX_CAPTURE_IMAGE_PIXELS: usize = 60_000_000;
 #[cfg(target_os = "windows")]
 const RICH_TEXT_RETRY_DELAYS_MS: [u64; 7] = [0, 40, 80, 140, 220, 360, 560];

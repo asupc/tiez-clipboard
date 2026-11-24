@@ -55,11 +55,17 @@ const SAMPLES: &[Sample] = &[
     Sample { id: 5, content_type: "image", content: "/Users/me/Library/Application Support/com.tiez/attachments/a.png", html: None, pinned: false, pinned_order: 0, tags: &[], timestamp: 1_760_000_005_000 },
 ];
 
-/// Settings a user had customised in the old release, plus plaintext secrets.
+/// Settings a user had customised in the old release, plus the sync/AI secrets
+/// the cleanup migration must delete.
 const USER_SETTINGS: &[(&str, &str)] = &[
     ("app.hotkey", "Ctrl+Shift+Z"),
     ("app.persistent", "true"),
     ("app.persistent_limit", "2000"),
+];
+
+/// Settings written by releases before the feature cleanup; they must be gone
+/// after the upgrade.
+const REMOVED_SETTINGS: &[(&str, &str)] = &[
     ("mqtt_password", "mqtt-secret"),
     ("cloud_sync_webdav_password", "dav-secret"),
 ];
@@ -91,6 +97,9 @@ fn write_legacy_db(path: &Path, migrate: Migrate, settings_sql: &str) {
     migrate(&conn).unwrap();
     conn.execute_batch(settings_sql).unwrap();
     for (key, value) in USER_SETTINGS {
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)", [key, value]).unwrap();
+    }
+    for (key, value) in REMOVED_SETTINGS {
         conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)", [key, value]).unwrap();
     }
     for s in SAMPLES {
@@ -148,7 +157,8 @@ fn check_upgrade(release: &str, migrate: Migrate, settings_sql: &str) {
         let entry = repo.get_entry_by_id(s.id).unwrap().unwrap_or_else(|| panic!("{}", ctx(&format!("record {} missing", s.id))));
         assert_eq!(entry.content, s.content, "{}", ctx(&format!("record {} content", s.id)));
         assert_eq!(entry.html_content.as_deref(), s.html, "{}", ctx(&format!("record {} html", s.id)));
-        assert_eq!(entry.is_pinned, s.pinned, "{}", ctx(&format!("record {} pinned", s.id)));
+        // Migration 22 clears pinning: legacy pinned rows are now ordinary.
+        assert_eq!(entry.is_pinned, false, "{}", ctx(&format!("record {} pinned cleared", s.id)));
         let mut tags = entry.tags.clone();
         tags.sort();
         assert_eq!(tags, s.tags.iter().map(|t| t.to_string()).collect::<Vec<_>>(), "{}", ctx(&format!("record {} tags", s.id)));
@@ -160,9 +170,9 @@ fn check_upgrade(release: &str, migrate: Migrate, settings_sql: &str) {
     // Pinned order survives, and pinned records still list first.
     let pinned_order: i64 = conn.lock().unwrap()
         .query_row("SELECT pinned_order FROM clipboard_history WHERE id = 2", [], |r| r.get(0)).unwrap();
-    assert_eq!(pinned_order, 3, "{}", ctx("pinned_order"));
+    assert_eq!(pinned_order, 0, "{}", ctx("pinned cleared"));
     let first = repo.get_history(10, 0, None).unwrap();
-    assert_eq!(first.first().map(|e| e.id), Some(2), "{}", ctx("pinned record lists first"));
+    assert_eq!(first.first().map(|e| e.id), Some(5), "{}", ctx("newest record lists first"));
 
     // Search by text and by tag.
     let hits: Vec<i64> = repo.search("周会", 50, false, false).unwrap().iter().map(|e| e.id).collect();
@@ -180,26 +190,28 @@ fn check_upgrade(release: &str, migrate: Migrate, settings_sql: &str) {
     }
     assert_eq!(repo.get_entry_by_id(4).unwrap().unwrap().content, SAMPLES[3].content, "{}", ctx("sensitive record readable"));
 
-    // Customised settings kept; plaintext secrets now encrypted but readable;
-    // new defaults added.
+    // Customised settings kept; settings for removed features are gone; new
+    // defaults added.
     let settings = SqliteSettingsRepository::new(conn.clone());
     for (key, value) in USER_SETTINGS {
         assert_eq!(settings.get(key).unwrap().as_deref(), Some(*value), "{}", ctx(&format!("setting {key}")));
     }
-    for key in ["mqtt_password", "cloud_sync_webdav_password"] {
-        let raw: String = conn.lock().unwrap()
-            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).unwrap();
-        assert!(encryption::is_modern_ciphertext(&raw), "{}", ctx(&format!("{key} encrypted at rest")));
+    for (key, _) in REMOVED_SETTINGS {
+        assert_eq!(settings.get(key).unwrap(), None, "{}", ctx(&format!("removed setting {key}")));
+    }
+    for key in [
+        "app.custom_background",
+        "app.language",
+        "app.cleanup_rules",
+        "app.app_cleanup_policies",
+        "file_server_port",
+        "cloud_sync_snapshot_interval_min",
+    ] {
+        assert_eq!(settings.get(key).unwrap(), None, "{}", ctx(&format!("removed setting {key}")));
     }
     assert!(settings.get("app.arrow_key_selection").unwrap().is_some(), "{}", ctx("new defaults seeded"));
 
-    // Decided policy: upgraders keep the defaults they were installed with,
-    // even where new installs get a different one (old port 12345 stays).
-    for key in ["file_server_port", "cloud_sync_snapshot_interval_min"] {
-        if let Some(old) = legacy_default(settings_sql, key) {
-            assert_eq!(settings.get(key).unwrap().as_deref(), Some(old.as_str()), "{}", ctx(&format!("{key} keeps the old default")));
-        }
-    }
+    // Decided policy: upgraders keep the defaults they were installed with.
     for (key, _, existing) in database::CHANGED_DEFAULTS {
         if USER_SETTINGS.iter().any(|(k, _)| k == key) {
             continue;
@@ -210,9 +222,19 @@ fn check_upgrade(release: &str, migrate: Migrate, settings_sql: &str) {
     }
     assert_eq!(settings.get(database::AUTOSTART_PENDING_KEY).unwrap(), None, "{}", ctx("login item left alone"));
 
-    // A backup was taken before rewriting secrets.
-    let backup = PathBuf::from(format!("{}.pre-encryption-v1.bak", path.display()));
-    assert!(backup.exists(), "{}", ctx("pre-migration backup"));
+    // The sync-only tables are dropped; history tables stay.
+    let table_exists = |name: &str| -> bool {
+        conn.lock().unwrap()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                [name],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap() != 0
+    };
+    assert!(!table_exists("cloud_sync_tombstones"), "{}", ctx("tombstones dropped"));
+    assert!(!table_exists("cloud_sync_local_index"), "{}", ctx("sync index dropped"));
+    assert!(table_exists("clipboard_history"), "{}", ctx("history kept"));
 
     // Starting again is a no-op.
     drop(settings);
@@ -236,8 +258,8 @@ fn new_install_gets_new_defaults_and_launches_at_login() {
         assert_eq!(get(key).as_deref(), Some(*new_install), "{key}");
     }
     assert_eq!(get(database::AUTOSTART_PENDING_KEY).as_deref(), Some("true"));
-    assert_eq!(get("file_server_port").as_deref(), Some("28462"));
-    assert_eq!(get("cloud_sync_snapshot_interval_min").as_deref(), Some("720"));
+    assert_eq!(get("file_server_port"), None);
+    assert_eq!(get("cloud_sync_snapshot_interval_min"), None);
     // Restarting is not a new install.
     drop(conn);
     let conn = upgrade(&path);

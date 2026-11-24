@@ -576,6 +576,7 @@ fn position_window_follow_mouse(window: &WebviewWindow) {
     let _ = window.set_position(position);
 }
 
+#[cfg(target_os = "macos")]
 fn maybe_position_window_follow_mouse(app: &AppHandle, window: &WebviewWindow) {
     let settings = app.state::<SettingsState>();
     if settings.follow_mouse.load(Ordering::Relaxed) {

@@ -272,6 +272,27 @@ impl TagRepository for SqliteTagRepository {
         let clipboard_repo =
             crate::infrastructure::repository::clipboard_repo::SqliteClipboardRepository::new(self.conn.clone());
         let removes_sensitive = crate::database::has_sensitive_tag(&[name.to_string()]);
+        // One read of every tag on the affected entries, instead of a query
+        // per entry inside the loop.
+        let tags_by_entry: std::collections::HashMap<i64, Vec<String>> = if removes_sensitive {
+            let mut map: std::collections::HashMap<i64, Vec<String>> = std::collections::HashMap::new();
+            let mut stmt = transaction
+                .prepare(
+                    "SELECT entry_id, tag FROM entry_tags
+                     WHERE entry_id IN (SELECT entry_id FROM entry_tags WHERE tag = ?)",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![name], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                let (entry_id, tag) = row.map_err(|e| e.to_string())?;
+                map.entry(entry_id).or_default().push(tag);
+            }
+            map
+        } else {
+            std::collections::HashMap::new()
+        };
         for id in ids {
             transaction
                 .execute("DELETE FROM entry_tags WHERE entry_id = ?1 AND tag = ?2", params![id, name])
@@ -282,15 +303,10 @@ impl TagRepository for SqliteTagRepository {
             // Same rule as editing an entry's tags: with no sensitive tag left
             // the entry is stored in plain text again.
             if removes_sensitive {
-                let remaining: Vec<String> = {
-                    let mut stmt = transaction
-                        .prepare("SELECT tag FROM entry_tags WHERE entry_id = ?")
-                        .map_err(|e| e.to_string())?;
-                    let rows = stmt
-                        .query_map(params![id], |row| row.get::<_, String>(0))
-                        .map_err(|e| e.to_string())?;
-                    rows.filter_map(Result::ok).collect()
-                };
+                let remaining: Vec<String> = tags_by_entry
+                    .get(&id)
+                    .map(|tags| tags.iter().filter(|tag| tag.as_str() != name).cloned().collect())
+                    .unwrap_or_default();
                 if !crate::database::has_sensitive_tag(&remaining) {
                     if let Err(e) = clipboard_repo.decrypt_entry_with_conn(&transaction, id) {
                         // Not decryptable on this device: keep the ciphertext

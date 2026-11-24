@@ -7,19 +7,15 @@ use std::sync::Mutex;
 pub struct SettingsState {
     pub deduplicate: AtomicBool,
     pub persistent: AtomicBool,
-    pub file_server_auto_close: AtomicBool,
     pub theme: Mutex<String>,
     pub capture_files: AtomicBool,
     pub capture_rich_text: AtomicBool,
     pub rich_text_snapshot_preview: AtomicBool,
-    pub auto_copy_file: AtomicBool,
     pub silent_start: AtomicBool,
     pub delete_after_paste: AtomicBool,
     pub privacy_protection: AtomicBool,
     pub privacy_protection_kinds: Mutex<Vec<String>>,
     pub privacy_protection_custom_rules: Mutex<Vec<String>>,
-    pub cleanup_rules: Mutex<String>,
-    pub app_cleanup_policies: Mutex<String>,
     pub sequential_mode: AtomicBool,
     pub sequential_paste_hotkey: Mutex<String>,
     /// Pastes as plain text: the latest item, or the selected one while the
@@ -30,7 +26,6 @@ pub struct SettingsState {
     pub sound_enabled: AtomicBool,
     pub paste_sound_enabled: AtomicBool,
     pub hide_tray_icon: AtomicBool,
-    pub hide_dock_icon: AtomicBool,
     pub edge_docking: AtomicBool,
     pub follow_mouse: AtomicBool,
     pub arrow_key_selection: AtomicBool,
@@ -50,19 +45,15 @@ impl SettingsState {
         let SettingsState {
             deduplicate,
             persistent,
-            file_server_auto_close,
             theme,
             capture_files,
             capture_rich_text,
             rich_text_snapshot_preview,
-            auto_copy_file,
             silent_start,
             delete_after_paste,
             privacy_protection,
             privacy_protection_kinds,
             privacy_protection_custom_rules,
-            cleanup_rules,
-            app_cleanup_policies,
             sequential_mode,
             sequential_paste_hotkey,
             plain_paste_hotkey,
@@ -71,7 +62,6 @@ impl SettingsState {
             sound_enabled,
             paste_sound_enabled,
             hide_tray_icon,
-            hide_dock_icon,
             edge_docking,
             follow_mouse,
             arrow_key_selection,
@@ -83,19 +73,15 @@ impl SettingsState {
         } = fresh;
         self.deduplicate.store(deduplicate.into_inner(), Ordering::Relaxed);
         self.persistent.store(persistent.into_inner(), Ordering::Relaxed);
-        self.file_server_auto_close.store(file_server_auto_close.into_inner(), Ordering::Relaxed);
         *self.theme.lock().unwrap() = theme.into_inner().unwrap();
         self.capture_files.store(capture_files.into_inner(), Ordering::Relaxed);
         self.capture_rich_text.store(capture_rich_text.into_inner(), Ordering::Relaxed);
         self.rich_text_snapshot_preview.store(rich_text_snapshot_preview.into_inner(), Ordering::Relaxed);
-        self.auto_copy_file.store(auto_copy_file.into_inner(), Ordering::Relaxed);
         self.silent_start.store(silent_start.into_inner(), Ordering::Relaxed);
         self.delete_after_paste.store(delete_after_paste.into_inner(), Ordering::Relaxed);
         self.privacy_protection.store(privacy_protection.into_inner(), Ordering::Relaxed);
         *self.privacy_protection_kinds.lock().unwrap() = privacy_protection_kinds.into_inner().unwrap();
         *self.privacy_protection_custom_rules.lock().unwrap() = privacy_protection_custom_rules.into_inner().unwrap();
-        *self.cleanup_rules.lock().unwrap() = cleanup_rules.into_inner().unwrap();
-        *self.app_cleanup_policies.lock().unwrap() = app_cleanup_policies.into_inner().unwrap();
         self.sequential_mode.store(sequential_mode.into_inner(), Ordering::Relaxed);
         *self.sequential_paste_hotkey.lock().unwrap() = sequential_paste_hotkey.into_inner().unwrap();
         *self.plain_paste_hotkey.lock().unwrap() = plain_paste_hotkey.into_inner().unwrap();
@@ -104,7 +90,6 @@ impl SettingsState {
         self.sound_enabled.store(sound_enabled.into_inner(), Ordering::Relaxed);
         self.paste_sound_enabled.store(paste_sound_enabled.into_inner(), Ordering::Relaxed);
         self.hide_tray_icon.store(hide_tray_icon.into_inner(), Ordering::Relaxed);
-        self.hide_dock_icon.store(hide_dock_icon.into_inner(), Ordering::Relaxed);
         self.edge_docking.store(edge_docking.into_inner(), Ordering::Relaxed);
         self.follow_mouse.store(follow_mouse.into_inner(), Ordering::Relaxed);
         self.arrow_key_selection.store(arrow_key_selection.into_inner(), Ordering::Relaxed);
@@ -148,7 +133,6 @@ mod tests {
         let repo = SqliteSettingsRepository::new(Arc::new(Mutex::new(conn)));
         let defaults = settings_state_from(&load_settings(&repo));
         repo.set("app.delete_after_paste", "true").unwrap();
-        repo.set("app.cleanup_rules", "secret => ").unwrap();
         repo.set("app.hotkey", "Ctrl+Shift+K").unwrap();
         let running = settings_state_from(&load_settings(&repo));
         assert!(running.delete_after_paste.load(Ordering::Relaxed));
@@ -157,7 +141,6 @@ mod tests {
         running.take_values_from(settings_state_from(&load_settings(&repo)));
 
         assert!(!running.delete_after_paste.load(Ordering::Relaxed));
-        assert_eq!(*running.cleanup_rules.lock().unwrap(), *defaults.cleanup_rules.lock().unwrap());
         assert_eq!(*running.main_hotkey.lock().unwrap(), *defaults.main_hotkey.lock().unwrap());
     }
 }

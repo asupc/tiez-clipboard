@@ -1,5 +1,5 @@
 use crate::database::{
-    calc_image_hash, calc_image_hash_from_bytes, calc_sync_content_hash, calc_text_hash,
+    calc_image_hash, calc_image_hash_from_bytes, calc_text_hash,
     has_sensitive_tag, is_text_type, save_image_bytes_to_file_with_extension, save_image_to_file,
     ENCRYPT_PREFIX,
 };
@@ -113,13 +113,6 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-fn is_syncable_content_type(content_type: &str) -> bool {
-    matches!(
-        content_type,
-        "text" | "code" | "url" | "rich_text" | "image" | "file" | "video" | "emoji_sync"
-    )
-}
-
 pub trait ClipboardRepository {
     fn save(
         &self,
@@ -177,32 +170,6 @@ pub trait ClipboardRepository {
         &self,
         id: i64,
     ) -> Result<Option<(String, String, Option<String>)>, String>;
-}
-
-/// Device-local list of edited entry ids the next WebDAV sync sends.
-pub const SYNC_EDITED_IDS_KEY: &str = "cloud_sync_edited_ids";
-
-pub fn edited_ids_for_sync(conn: &Connection) -> std::collections::BTreeSet<i64> {
-    SqliteSettingsRepository::get_raw(conn, SYNC_EDITED_IDS_KEY)
-        .ok()
-        .flatten()
-        .unwrap_or_default()
-        .split(',')
-        .filter_map(|id| id.trim().parse().ok())
-        .collect()
-}
-
-pub fn set_edited_ids_for_sync(
-    conn: &Connection,
-    ids: &std::collections::BTreeSet<i64>,
-) -> Result<(), String> {
-    let value = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
-        params![SYNC_EDITED_IDS_KEY, value],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 pub struct SqliteClipboardRepository {
@@ -318,68 +285,6 @@ impl SqliteClipboardRepository {
             )
             .map_err(|e| e.to_string())?;
         }
-        Ok(())
-    }
-
-    fn upsert_tombstone_with_conn(
-        &self,
-        conn: &Connection,
-        content_type: &str,
-        content_hash: i64,
-        deleted_at: i64,
-    ) -> Result<(), String> {
-        if !is_syncable_content_type(content_type) || content_hash == 0 {
-            return Ok(());
-        }
-
-        conn.execute(
-            "INSERT INTO cloud_sync_tombstones (content_type, content_hash, deleted_at)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(content_type, content_hash)
-             DO UPDATE SET deleted_at = MAX(cloud_sync_tombstones.deleted_at, excluded.deleted_at)",
-            params![content_type, content_hash, deleted_at],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    /// An edited entry is new content to other devices: the old content gets a
-    /// tombstone, and the entry is listed for the next sync to send (its sort
-    /// time doesn't change, so the sync wouldn't pick it up otherwise).
-    fn record_edit_for_sync(
-        &self,
-        conn: &Connection,
-        id: i64,
-        (old_type, old_content): (&str, &str),
-        (new_type, new_content): (&str, &str),
-    ) -> Result<(), String> {
-        let old_hash = calc_sync_content_hash(old_type, old_content);
-        let new_hash = calc_sync_content_hash(new_type, new_content);
-        if (old_type, old_hash) == (new_type, new_hash) {
-            return Ok(());
-        }
-        self.upsert_tombstone_with_conn(conn, old_type, old_hash, now_ms())?;
-        self.clear_tombstone_with_conn(conn, new_type, new_hash)?;
-        let mut ids = edited_ids_for_sync(conn);
-        ids.insert(id);
-        set_edited_ids_for_sync(conn, &ids)
-    }
-
-    fn clear_tombstone_with_conn(
-        &self,
-        conn: &Connection,
-        content_type: &str,
-        content_hash: i64,
-    ) -> Result<(), String> {
-        if !is_syncable_content_type(content_type) || content_hash == 0 {
-            return Ok(());
-        }
-
-        conn.execute(
-            "DELETE FROM cloud_sync_tombstones WHERE content_type = ?1 AND content_hash = ?2",
-            params![content_type, content_hash],
-        )
-        .map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -727,13 +632,6 @@ impl SqliteClipboardRepository {
             )
         };
 
-        // Re-adding an item should clear an older delete tombstone for the same fingerprint.
-        self.clear_tombstone_with_conn(conn, &entry.content_type, calculated_hash)?;
-        let sync_hash = calc_sync_content_hash(&entry.content_type, &final_content);
-        if sync_hash != calculated_hash {
-            self.clear_tombstone_with_conn(conn, &entry.content_type, sync_hash)?;
-        }
-
         let mut seen: HashSet<String> = HashSet::new();
         let mut cleaned_tags: Vec<String> = Vec::new();
         for tag in &entry.tags {
@@ -873,35 +771,20 @@ impl SqliteClipboardRepository {
         id: i64,
         data_dir: Option<&std::path::Path>,
     ) -> Result<Vec<std::path::PathBuf>, String> {
-        self.delete_collecting_files_syncing(conn, id, data_dir, true)
-    }
-
-    /// `sync_deletion`: leave a tombstone so synced devices delete the entry
-    /// too. Not for entries over this device's history limit: the limit is
-    /// set per device, and another device may keep more.
-    fn delete_collecting_files_syncing(
-        &self,
-        conn: &Connection,
-        id: i64,
-        data_dir: Option<&std::path::Path>,
-        sync_deletion: bool,
-    ) -> Result<Vec<std::path::PathBuf>, String> {
         self.validate_entry_with_conn(conn, id)?;
-        let mut tombstone: Option<(String, i64)> = None;
         let mut candidates = Vec::new();
         // Check for external files to delete
         if let Some(dir) = data_dir {
             let attachments_dir = dir.join("attachments");
             let mut stmt = conn
-                 .prepare("SELECT content, html_content, is_external, content_type FROM clipboard_history WHERE id = ?")
+                 .prepare("SELECT content, html_content, is_external FROM clipboard_history WHERE id = ?")
                  .map_err(|e| e.to_string())?;
 
             if let Ok(entry) = stmt.query_row([id], |row| {
                 let content_raw: String = row.get(0)?;
                 let html_raw: Option<String> = row.get(1).ok();
                 let is_ext: i32 = row.get(2)?;
-                let content_type: String = row.get(3)?;
-                Ok((content_raw, html_raw, is_ext == 1, content_type))
+                Ok((content_raw, html_raw, is_ext == 1))
             }) {
                 let files_to_remove = self.collect_attachment_paths_for_cleanup(
                     &entry.0,
@@ -909,29 +792,8 @@ impl SqliteClipboardRepository {
                     entry.2,
                     &attachments_dir,
                 )?;
-                // Fingerprint image bytes before removing managed attachments.
-                // Hashing the path after deletion would create a tombstone that
-                // cannot match the byte-based hash uploaded to mobile devices.
-                let content = self.maybe_decrypt_text(&entry.0)?;
-                tombstone = Some((entry.3.clone(), calc_sync_content_hash(&entry.3, &content)));
                 candidates.extend(files_to_remove.into_iter().filter(|path| path.exists()));
             }
-        } else {
-            let mut stmt = conn
-                .prepare("SELECT content_type, content FROM clipboard_history WHERE id = ?")
-                .map_err(|e| e.to_string())?;
-            if let Ok(entry) = stmt.query_row([id], |row| {
-                let content_type: String = row.get(0)?;
-                let content: String = row.get(1)?;
-                Ok((content_type, content))
-            }) {
-                let content = self.maybe_decrypt_text(&entry.1)?;
-                tombstone = Some((entry.0.clone(), calc_sync_content_hash(&entry.0, &content)));
-            }
-        }
-
-        if let Some((content_type, content_hash)) = tombstone.filter(|_| sync_deletion) {
-            self.upsert_tombstone_with_conn(conn, &content_type, content_hash, now_ms())?;
         }
 
         conn.execute("DELETE FROM clipboard_history WHERE id = ?", [id])
@@ -961,7 +823,10 @@ impl SqliteClipboardRepository {
         if pending.is_empty() {
             return Vec::new();
         }
-        let Ok(mut stmt) = conn.prepare("SELECT content, html_content, is_external FROM clipboard_history") else {
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT content, html_content, is_external FROM clipboard_history
+             WHERE is_external = 1 OR html_content IS NOT NULL",
+        ) else {
             return Vec::new();
         };
         let Ok(rows) = stmt.query_map([], |row| {
@@ -1116,7 +981,7 @@ impl SqliteClipboardRepository {
                     // Actually delete records (and files if needed)
                     let mut candidates = Vec::new();
                     for id in &deleted_ids {
-                        if let Ok(files) = self.delete_collecting_files_syncing(conn, *id, data_dir, false) {
+                        if let Ok(files) = self.delete_collecting_files(conn, *id, data_dir) {
                             candidates.extend(files);
                         }
                     }
@@ -1262,11 +1127,6 @@ impl SqliteClipboardRepository {
 
         let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
         let should_encrypt = has_sensitive_tag(&tags);
-        if old_content != content {
-            let new_type = if content_type == "rich_text" { "text" } else { content_type.as_str() };
-            self.record_edit_for_sync(conn, id, (&content_type, &old_content), (new_type, content))?;
-        }
-
         if is_text_type(&content_type) {
             let hash = calc_text_hash(content) as i64;
             let new_type = if content_type == "rich_text" {
@@ -1945,15 +1805,13 @@ mod tests {
              VALUES (1, 'text', 'older', 'App', 1, 1, 'older', '[]'), (2, 'text', 'newer', 'App', 2, 2, 'newer', '[]');",
         );
         let conn = repo.conn.lock().unwrap();
-        let tombstones = |conn: &Connection| -> i64 {
-            conn.query_row("SELECT COUNT(*) FROM cloud_sync_tombstones", [], |r| r.get(0)).unwrap()
-        };
 
         assert_eq!(repo.enforce_limit_with_conn(&conn, None).unwrap(), vec![1]);
-        assert_eq!(tombstones(&conn), 0);
-
         repo.delete_with_conn(&conn, 2, None).unwrap();
-        assert_eq!(tombstones(&conn), 1, "a deletion by the user still syncs");
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clipboard_history", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(remaining, 0);
     }
 
     #[test]
@@ -2052,28 +1910,6 @@ mod tests {
         assert_eq!(search_ids(&repo, "work", 1, true, false), vec![1]);
         assert_eq!(search_ids(&repo, "work%", 20, true, false), vec![4]);
         assert_eq!(search_ids(&repo, "wor", 20, true, false), Vec::<i64>::new());
-    }
-
-    #[test]
-    fn an_edit_replaces_the_old_text_on_other_devices() {
-        let repo = search_repository(
-            "INSERT INTO clipboard_history (id, content_type, content, source_app, timestamp, sort_at, preview, tags)
-             VALUES (7, 'text', 'draft', 'App', 1, 1, 'draft', '[]');",
-        );
-        let conn = repo.conn.lock().unwrap();
-
-        repo.update_entry_content_with_conn(&conn, 7, "final", "final").unwrap();
-
-        let old_hash = calc_sync_content_hash("text", "draft");
-        let tombstoned: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM cloud_sync_tombstones WHERE content_type = 'text' AND content_hash = ?",
-                [old_hash],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(tombstoned, 1);
-        assert_eq!(edited_ids_for_sync(&conn), std::collections::BTreeSet::from([7]));
     }
 
     #[test]

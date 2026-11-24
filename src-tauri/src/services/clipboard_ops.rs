@@ -5,15 +5,18 @@ use crate::error::{AppError, AppResult};
 use crate::infrastructure::repository::clipboard_repo::ClipboardRepository;
 use crate::infrastructure::repository::settings_repo::SettingsRepository;
 use crate::services::clipboard::{
-    app_likely_word_processor, attach_rich_image_fallback, attach_rich_named_formats,
+    attach_rich_image_fallback, attach_rich_named_formats,
     build_clipboard_text_fingerprint, build_exact_paste_html,
     capture_preserved_named_formats_from_clipboard, clipboard_image_fallback_data_url,
     derive_rich_text_content, extract_animated_image_data_url_from_html,
     html_has_renderable_rich_body, normalize_plain_text_for_clipboard_paste, parse_cf_html,
     plain_text_from_tabular_html, repair_html_fragment, rich_paste_needs_exact_text,
-    rtf_bytes_from_named_formats, sanitize_tabular_html_for_paste,
-    should_attach_rich_image_fallback_on_capture,
+    sanitize_tabular_html_for_paste,
     split_rich_html_and_image_fallback, split_rich_html_and_named_formats,
+};
+#[cfg(target_os = "macos")]
+use crate::services::clipboard::{
+    app_likely_word_processor, rtf_bytes_from_named_formats,
 };
 use arboard::Clipboard;
 use base64::{engine::general_purpose, Engine as _};
@@ -1298,6 +1301,7 @@ fn copy_image_bytes_to_clipboard(
             .map_err(AppError::from)?;
     }
 
+    #[cfg(not(target_os = "windows"))]
     Ok((primary_hash, secondary_hash))
 }
 

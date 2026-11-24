@@ -123,7 +123,7 @@ pub fn set_deduplication(
 
 #[tauri::command]
 pub fn save_setting(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     db_state: State<'_, DbState>,
     settings_state: State<'_, crate::app_state::SettingsState>,
     key: String,
@@ -220,11 +220,6 @@ pub fn save_setting(
                 .hide_tray_icon
                 .store(value == "true", Ordering::Relaxed);
         }
-        "app.hide_dock_icon" => {
-            settings_state
-                .hide_dock_icon
-                .store(value == "true", Ordering::Relaxed);
-        }
         _ => {}
     }
 
@@ -233,10 +228,6 @@ pub fn save_setting(
         .set(&key, &value)
         .map_err(AppError::from)?;
 
-    // The tray menu's labels follow the app language.
-    if key == "app.language" {
-        crate::app::tray::refresh(&app_handle);
-    }
     Ok(())
 }
 
@@ -314,42 +305,6 @@ pub fn get_settings(
     state.settings_repo.get_all().map_err(AppError::from)
 }
 
-/// Sensitive settings this device can't decrypt; get_settings leaves them out.
-#[tauri::command]
-pub fn get_undecryptable_settings(state: State<'_, DbState>) -> AppResult<Vec<String>> {
-    state.settings_repo.undecryptable_keys().map_err(AppError::from)
-}
-
-/// The user opened the setting marked for re-entry: drop its unreadable value
-/// (it can't be recovered on this device) so the field starts empty.
-#[tauri::command]
-pub fn clear_undecryptable_settings(state: State<'_, DbState>, keys: Vec<String>) -> AppResult<Vec<String>> {
-    state.settings_repo.clear_undecryptable(&keys).map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn set_file_server_auto_close(
-    state: State<'_, crate::app_state::SettingsState>,
-    db_state: State<'_, DbState>,
-    enabled: bool,
-) -> AppResult<()> {
-    state
-        .file_server_auto_close
-        .store(enabled, Ordering::Relaxed);
-    db_state
-        .settings_repo
-        .set("file_transfer_auto_close", &enabled.to_string())
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn set_file_transfer_auto_open(db_state: State<'_, DbState>, enabled: bool) -> AppResult<()> {
-    db_state
-        .settings_repo
-        .set("file_transfer_auto_open", &enabled.to_string())
-        .map_err(AppError::from)
-}
-
 #[tauri::command]
 pub fn set_arrow_key_selection(
     state: State<'_, crate::app_state::SettingsState>,
@@ -410,22 +365,6 @@ pub fn set_rich_text_snapshot_preview(
     db_state
         .settings_repo
         .set("app.rich_text_snapshot_preview", &enabled.to_string())
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn set_auto_copy_file(
-    state: State<'_, crate::app_state::SettingsState>,
-    db_state: State<'_, DbState>,
-    enabled: bool,
-) -> AppResult<()> {
-    state.auto_copy_file.store(enabled, Ordering::Relaxed);
-    db_state
-        .settings_repo
-        .set(
-            "file_transfer_auto_copy",
-            if enabled { "true" } else { "false" },
-        )
         .map_err(AppError::from)
 }
 
@@ -503,34 +442,6 @@ pub fn set_privacy_protection_custom_rules(
 }
 
 #[tauri::command]
-pub fn set_cleanup_rules(
-    state: State<'_, crate::app_state::SettingsState>,
-    db_state: State<'_, DbState>,
-    rules: String,
-) -> AppResult<()> {
-    let mut guard = state.cleanup_rules.lock().unwrap();
-    *guard = rules.clone();
-    db_state
-        .settings_repo
-        .set("app.cleanup_rules", &rules)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn set_app_cleanup_policies(
-    state: State<'_, crate::app_state::SettingsState>,
-    db_state: State<'_, DbState>,
-    policies: String,
-) -> AppResult<()> {
-    let mut guard = state.app_cleanup_policies.lock().unwrap();
-    *guard = policies.clone();
-    db_state
-        .settings_repo
-        .set("app.app_cleanup_policies", &policies)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
 pub fn set_sound_enabled(
     state: State<'_, crate::app_state::SettingsState>,
     db_state: State<'_, DbState>,
@@ -566,48 +477,6 @@ pub fn set_paste_sound_enabled(
 pub fn play_preview_sound(app_handle: tauri::AppHandle, kind: Option<String>) {
     let kind = kind.unwrap_or_else(|| "copy".to_string());
     crate::services::ui_sound::play_ui_sound(&app_handle, &kind);
-}
-
-#[tauri::command]
-pub fn get_mqtt_status() -> bool {
-    crate::services::mqtt_sub::get_mqtt_status()
-}
-
-#[tauri::command]
-pub fn get_mqtt_running() -> bool {
-    crate::services::mqtt_sub::get_mqtt_running()
-}
-
-#[tauri::command]
-pub fn restart_mqtt_client(app_handle: AppHandle) {
-    crate::services::mqtt_sub::restart_mqtt_client(app_handle)
-}
-
-#[tauri::command]
-pub fn get_cloud_sync_status() -> crate::services::cloud_sync::CloudSyncStatus {
-    crate::services::cloud_sync::get_cloud_sync_status()
-}
-
-#[tauri::command]
-pub fn restart_cloud_sync_client(app_handle: AppHandle) {
-    crate::services::cloud_sync::restart_cloud_sync_client(app_handle);
-}
-
-#[tauri::command]
-pub fn request_cloud_sync(app_handle: AppHandle) {
-    crate::services::cloud_sync::request_cloud_sync(app_handle);
-}
-
-#[tauri::command]
-pub fn stop_cloud_sync_client(app_handle: AppHandle) {
-    crate::services::cloud_sync::stop_cloud_sync_client(app_handle);
-}
-
-#[tauri::command]
-pub async fn cloud_sync_now(
-    app_handle: AppHandle,
-) -> AppResult<crate::services::cloud_sync::CloudSyncStatus> {
-    crate::services::cloud_sync::cloud_sync_now(app_handle).await
 }
 
 #[tauri::command]
@@ -647,7 +516,6 @@ pub fn reset_settings(
     *crate::global_state::HOTKEY_STRING.lock().unwrap() = fresh.main_hotkey.clone();
     // The window applies the rest when it reloads, but not these two.
     let _ = set_tray_visible(app.clone(), app.state(), !fresh.hide_tray_icon);
-    let _ = set_dock_visible(app.clone(), app.state(), !fresh.hide_dock_icon);
 
     sync_registered_hotkeys(&app)
 }
@@ -666,43 +534,6 @@ pub fn set_tray_visible(
     db_state
         .settings_repo
         .set("app.hide_tray_icon", &(!visible).to_string())
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn set_dock_visible(
-    app_handle: AppHandle,
-    state: State<'_, crate::app_state::SettingsState>,
-    visible: bool,
-) -> AppResult<()> {
-    state.hide_dock_icon.store(!visible, Ordering::Relaxed);
-    #[cfg(target_os = "macos")]
-    {
-        crate::infrastructure::macos_api::window::set_dock_visibility_preserving_panel(
-            &app_handle, visible,
-        ).map_err(AppError::from)?;
-        if !visible {
-            // Tao intentionally drops a hide within one second of showing the
-            // Dock icon. Retry beyond that interval, but respect a newer toggle.
-            let app = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-                let app_on_main = app.clone();
-                let _ = app.run_on_main_thread(move || {
-                    let settings = app_on_main.state::<crate::app_state::SettingsState>();
-                    if settings.hide_dock_icon.load(Ordering::Relaxed) {
-                        if let Err(error) = crate::infrastructure::macos_api::window::set_dock_visibility_preserving_panel(&app_on_main, false) {
-                            eprintln!("Failed to retry hiding Dock icon: {error}");
-                        }
-                    }
-                });
-            });
-        }
-    }
-    let db_state = app_handle.state::<DbState>();
-    db_state
-        .settings_repo
-        .set("app.hide_dock_icon", &(!visible).to_string())
         .map_err(AppError::from)
 }
 

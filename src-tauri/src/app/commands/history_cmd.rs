@@ -3,7 +3,6 @@ use crate::database::DbState;
 use crate::domain::models::ClipboardEntry;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::repository::clipboard_repo::{ClipboardRepository, ClipboardSortMode};
-use crate::infrastructure::repository::tag_repo::TagRepository;
 use crate::services::clipboard::{entry_matches_search, truncate_html_for_preview};
 use std::collections::HashSet;
 use tauri::{AppHandle, Emitter, State};
@@ -69,9 +68,6 @@ pub async fn import_clipboard_data(
     .map_err(|error| AppError::Internal(error.to_string()))??;
 
     let _ = app_handle.emit("clipboard-changed", ());
-    if report.imported > 0 {
-        crate::services::cloud_sync::request_cloud_sync(app_handle);
-    }
     Ok(report)
 }
 
@@ -383,7 +379,6 @@ pub fn delete_clipboard_entry(
         state.repo.delete(id, Some(&data_dir))?;
     }
     let _ = app_handle.emit("clipboard-changed", ());
-    crate::services::cloud_sync::request_cloud_sync(app_handle);
     Ok(())
 }
 
@@ -404,90 +399,7 @@ pub fn clear_clipboard_history(
     let data_dir = app_data.0.lock().unwrap();
     state.repo.clear(Some(&data_dir)).map_err(AppError::from)?;
     let _ = app_handle.emit("clipboard-changed", ());
-    crate::services::cloud_sync::request_cloud_sync(app_handle);
     Ok(())
-}
-
-#[tauri::command(async)]
-pub fn get_tag_items(state: State<'_, DbState>, tag: String) -> AppResult<Vec<ClipboardEntry>> {
-    let mut history = state
-        .tag_repo
-        .get_entries_by_tag(&tag)
-        .map_err(AppError::from)?;
-
-    for item in &mut history {
-        if (item.content_type == "text"
-            || item.content_type == "code"
-            || item.content_type == "url"
-            || item.content_type == "rich_text")
-            && item.content.chars().count() > 50000
-        {
-            item.content = format!(
-                "{}... [Content Truncated]",
-                item.content.chars().take(50000).collect::<String>()
-            );
-        }
-    }
-
-    Ok(history)
-}
-
-#[tauri::command]
-pub fn get_all_tags_info(
-    state: State<'_, DbState>,
-) -> AppResult<std::collections::HashMap<String, i32>> {
-    state.tag_repo.get_all_with_counts().map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn rename_tag_globally(
-    state: State<'_, DbState>,
-    session: State<'_, SessionHistory>,
-    old_name: String,
-    new_name: String,
-) -> AppResult<()> {
-    {
-        let mut session_items = session.inner().0.lock().unwrap();
-        for item in session_items.iter_mut() {
-            for tag in item.tags.iter_mut() {
-                if *tag == old_name {
-                    *tag = new_name.clone();
-                }
-            }
-            item.tags.sort();
-            item.tags.dedup();
-        }
-    }
-
-    state
-        .tag_repo
-        .rename(&old_name, &new_name)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn delete_tag_from_all(
-    state: State<'_, DbState>,
-    session: State<'_, SessionHistory>,
-    tag_name: String,
-) -> AppResult<()> {
-    // Deleting a tag removes it from entries; the entries themselves stay.
-    {
-        let mut session_items = session.inner().0.lock().unwrap();
-        for item in session_items.iter_mut() {
-            item.tags.retain(|tag| tag != &tag_name);
-        }
-    }
-
-    state
-        .tag_repo
-        .delete_globally(&tag_name)
-        .map_err(AppError::from)
-}
-
-#[tauri::command]
-pub fn create_new_tag(state: State<'_, DbState>, tag_name: String) -> AppResult<()> {
-    state.tag_repo.create(&tag_name).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -531,21 +443,6 @@ pub fn get_clipboard_content_with_html(
         .map_err(AppError::from)?
         .map(|(content, _, html)| (content, html))
         .ok_or_else(|| AppError::Validation("Entry not found".to_string()))
-}
-
-#[tauri::command]
-pub fn update_pinned_order(
-    app_handle: AppHandle,
-    state: State<'_, DbState>,
-    orders: Vec<(i64, i64)>,
-) -> AppResult<()> {
-    state
-        .repo
-        .update_pinned_order(orders)
-        .map_err(AppError::from)?;
-    let _ = app_handle.emit("clipboard-changed", ());
-    crate::services::cloud_sync::request_cloud_sync(app_handle);
-    Ok(())
 }
 
 #[tauri::command]

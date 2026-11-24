@@ -1,7 +1,6 @@
 pub mod encryption;
 pub mod stable_hash;
 pub mod http_error;
-pub mod net_interfaces;
 #[cfg(target_os = "macos")]
 pub mod macos_api;
 pub mod repository;

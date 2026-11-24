@@ -13,71 +13,35 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use crate::database::DbState;
 use crate::global_state::USER_RECORDING_PAUSED;
-use crate::infrastructure::repository::settings_repo::SettingsRepository;
 
 pub const TRAY_ID: &str = "main_tray";
 const ICON_BYTES: &[u8] = include_bytes!("../../icons/tray-icon.png");
-const HELP_URL: &str = "https://tiez.name666.top/";
 /// Opacity of the icon while recording is paused: a dimmed icon is how the
 /// user notices, days later, why nothing new shows up.
 const PAUSED_ICON_ALPHA: f32 = 0.4;
 
 /// Events the main window listens for (App.tsx).
 pub const EVENT_OPEN_SETTINGS: &str = "tray-open-settings";
-pub const EVENT_CHECK_UPDATE: &str = "tray-check-update";
 
 struct Labels {
     open: &'static str,
     pause: &'static str,
     settings: &'static str,
-    check_update: &'static str,
-    help: &'static str,
     quit: &'static str,
     tooltip: &'static str,
     tooltip_paused: &'static str,
 }
 
-fn labels(language: &str) -> Labels {
-    match language {
-        "en" => Labels {
-            open: "Open TieZ",
-            pause: "Pause Recording",
-            settings: "Settings…",
-            check_update: "Check for Updates…",
-            help: "Help",
-            quit: "Quit TieZ",
-            tooltip: "TieZ",
-            tooltip_paused: "TieZ (recording paused)",
-        },
-        "tw" => Labels {
-            open: "打開 TieZ",
-            pause: "暫停記錄",
-            settings: "設定…",
-            check_update: "檢查更新…",
-            help: "使用說明",
-            quit: "結束 TieZ",
-            tooltip: "TieZ",
-            tooltip_paused: "TieZ（已暫停記錄）",
-        },
-        _ => Labels {
-            open: "打开 TieZ",
-            pause: "暂停记录",
-            settings: "设置…",
-            check_update: "检查更新…",
-            help: "使用帮助",
-            quit: "退出 TieZ",
-            tooltip: "TieZ",
-            tooltip_paused: "TieZ（已暂停记录）",
-        },
+fn labels() -> Labels {
+    Labels {
+        open: "打开 TieZ",
+        pause: "暂停记录",
+        settings: "设置…",
+        quit: "退出 TieZ",
+        tooltip: "TieZ",
+        tooltip_paused: "TieZ（已暂停记录）",
     }
-}
-
-fn current_language<R: Runtime>(app: &AppHandle<R>) -> String {
-    app.try_state::<DbState>()
-        .and_then(|db| db.settings_repo.get("app.language").ok().flatten())
-        .unwrap_or_else(|| "zh".to_string())
 }
 
 fn current_open_hotkey<R: Runtime>(app: &AppHandle<R>) -> String {
@@ -154,7 +118,7 @@ fn item_with_shortcut<R: Runtime>(
 }
 
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
-    let l = labels(&current_language(app));
+    let l = labels();
     let paused = USER_RECORDING_PAUSED.load(Ordering::Relaxed);
     let hotkey = current_open_hotkey(app);
 
@@ -170,8 +134,6 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     #[cfg(not(target_os = "macos"))]
     let (settings_shortcut, quit_shortcut): (Option<&str>, Option<&str>) = (None, None);
     let settings = item_with_shortcut(app, "settings", l.settings, settings_shortcut)?;
-    let check_update = MenuItem::with_id(app, "check_update", l.check_update, true, None::<&str>)?;
-    let help = MenuItem::with_id(app, "help", l.help, true, None::<&str>)?;
     let quit = item_with_shortcut(app, "quit", l.quit, quit_shortcut)?;
 
     Menu::with_items(
@@ -182,8 +144,6 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &pause,
             &PredefinedMenuItem::separator(app)?,
             &settings,
-            &check_update,
-            &help,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
@@ -210,7 +170,7 @@ pub fn refresh<R: Runtime>(app: &AppHandle<R>) {
         return;
     };
     let paused = USER_RECORDING_PAUSED.load(Ordering::Relaxed);
-    let l = labels(&current_language(app));
+    let l = labels();
     match build_menu(app) {
         Ok(menu) => {
             let _ = tray.set_menu(Some(menu));
@@ -251,11 +211,6 @@ fn on_menu_event(app: &AppHandle, id: &str) {
             refresh(app);
         }
         "settings" => open_window_then_emit(app, EVENT_OPEN_SETTINGS),
-        "check_update" => open_window_then_emit(app, EVENT_CHECK_UPDATE),
-        "help" => {
-            use tauri_plugin_opener::OpenerExt;
-            let _ = app.opener().open_url(HELP_URL, None::<&str>);
-        }
         "quit" => crate::app::light_mode::request_app_exit(app),
         _ => {}
     }
@@ -266,7 +221,7 @@ pub fn setup(app: &tauri::App, hide_tray: bool) {
     let menu = build_menu(&handle).expect("Failed to build tray menu");
     let image = icon(false).expect("Failed to load tray icon");
 
-    let mut tray_builder = TrayIconBuilder::with_id(TRAY_ID)
+    let tray_builder = TrayIconBuilder::with_id(TRAY_ID)
         .icon(image)
         .tooltip("TieZ")
         .show_menu_on_left_click(false)
@@ -314,12 +269,4 @@ mod tests {
         assert_eq!(menu_accelerator("Hyper+V"), None);
     }
 
-    #[test]
-    fn every_language_has_menu_labels() {
-        for language in ["zh", "en", "tw", "unknown"] {
-            let l = labels(language);
-            assert!(!l.open.is_empty() && !l.pause.is_empty() && !l.quit.is_empty());
-            assert!(l.tooltip_paused.starts_with("TieZ"));
-        }
-    }
 }

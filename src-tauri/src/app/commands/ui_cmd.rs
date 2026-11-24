@@ -88,7 +88,7 @@ pub fn set_theme(
     window: WebviewWindow,
     state: State<'_, SettingsState>,
     db_state: State<'_, DbState>,
-    theme: String,
+    _theme: String,
     color_mode: Option<String>,
     show_app_border: Option<bool>,
 ) -> AppResult<()> {
@@ -116,7 +116,7 @@ pub fn set_theme(
     let _ = show_app_border;
 
     if let Ok(mut guard) = state.theme.lock() {
-        *guard = theme.clone();
+        *guard = "mica".to_string();
     }
 
     let native_theme = match effective_color_mode.as_deref() {
@@ -185,7 +185,7 @@ pub fn set_theme(
 
         let build = windows_version::OsVersion::current().build;
         let is_windows_11 = build >= 22000;
-        crate::app::window_manager::apply_windows_window_material(&window, &theme, is_dark);
+        crate::app::window_manager::apply_windows_window_material(&window, "mica", is_dark);
         let _ = window.set_shadow(show_border && is_windows_11);
 
         apply_dwm_frame(hwnd);
@@ -196,6 +196,6 @@ pub fn set_theme(
         crate::app::window_manager::apply_macos_window_material(&window)?;
     }
 
-    let _ = window.emit("theme-changed", theme);
+    let _ = window.emit("theme-changed", "mica");
     Ok(())
 }

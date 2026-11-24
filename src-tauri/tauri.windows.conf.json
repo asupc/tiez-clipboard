@@ -14,8 +14,7 @@
         "installerIcon": "icons/icon.ico",
         "compression": "lzma",
         "installerHooks": "nsis/uninstall.nsh",
-        "languages": ["English", "SimpChinese", "TradChinese"],
-        "displayLanguageSelector": true,
+        "languages": ["SimpChinese"],
         "startMenuFolder": "TieZ"
       }
     }

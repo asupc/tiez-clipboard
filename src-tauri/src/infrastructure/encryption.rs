@@ -560,53 +560,6 @@ fn backup_before_migration(conn: &rusqlite::Connection) -> Result<(), String> {
 fn migrate_legacy_in_transaction(conn: &rusqlite::Connection) -> Result<usize, String> {
     let mut upgraded = 0usize;
 
-    // Settings: sensitive keys with legacy or plaintext values are rewritten via encrypt.
-    {
-        let mut stmt = conn
-            .prepare("SELECT key, value FROM settings")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-
-        let mut updates: Vec<(String, String)> = Vec::new();
-        for row in rows {
-            let (key, value) = row.map_err(|e| e.to_string())?;
-            if !crate::database::is_sensitive_key(&key) {
-                continue;
-            }
-            let upgraded_value = upgrade_field(&value);
-            if upgraded_value != value {
-                updates.push((key, upgraded_value));
-                continue;
-            }
-            if is_modern_ciphertext(&value) {
-                continue;
-            }
-            let plain = if is_encrypted_value(&value) {
-                let Some(plain) = decrypt_value(&value) else {
-                    continue;
-                };
-                plain
-            } else {
-                value
-            };
-            if let Some(enc) = encrypt_value(&plain) {
-                updates.push((key, enc));
-            }
-        }
-        for (key, enc) in updates {
-            conn.execute(
-                "UPDATE settings SET value = ?1 WHERE key = ?2",
-                rusqlite::params![enc, key],
-            )
-            .map_err(|e| e.to_string())?;
-            upgraded += 1;
-        }
-    }
-
     // Clipboard text fields with legacy plain: prefix
     {
         let mut stmt = conn
@@ -743,8 +696,8 @@ mod tests {
     }
 
     /// An upgrade from Windows 0.3.3 on the same machine: its DPAPI values
-    /// (sensitive settings and records tagged sensitive) must come out readable
-    /// and re-encrypted, not as errors.
+    /// (records tagged sensitive) must come out readable and re-encrypted, not
+    /// as errors.
     #[cfg(target_os = "windows")]
     #[test]
     fn upgrade_reads_and_reencrypts_windows_0_3_3_dpapi_values() {
@@ -754,23 +707,16 @@ mod tests {
 
         let conn = rusqlite::Connection::open_in_memory().expect("open database");
         conn.execute_batch(
-            "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-             CREATE TABLE clipboard_history (
+            "CREATE TABLE clipboard_history (
                  id INTEGER PRIMARY KEY, content TEXT NOT NULL, preview TEXT NOT NULL, html_content TEXT
              );",
         )
         .unwrap();
-        conn.execute("INSERT INTO settings VALUES ('mqtt_password', ?1)", [&legacy]).unwrap();
         let record = v0_3_3_ciphertext("银行卡 6222");
         conn.execute("INSERT INTO clipboard_history VALUES (1, ?1, ?1, NULL)", [&record]).unwrap();
 
-        assert_eq!(migrate_legacy_ciphertexts(&conn).expect("migrate"), 2);
+        assert_eq!(migrate_legacy_ciphertexts(&conn).expect("migrate"), 1);
 
-        let setting: String = conn
-            .query_row("SELECT value FROM settings WHERE key = 'mqtt_password'", [], |r| r.get(0))
-            .unwrap();
-        assert!(is_modern_ciphertext(&setting), "{setting}");
-        assert_eq!(decrypt_value(&setting).as_deref(), Some(secret));
         let (content, preview): (String, String) = conn
             .query_row("SELECT content, preview FROM clipboard_history WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?)))
             .unwrap();

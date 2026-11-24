@@ -440,6 +440,90 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
         conn.execute("INSERT INTO schema_migrations (version) VALUES (20)", [])?;
     }
 
+    // Migration 21: the app now ships one theme, one language, and no sync,
+    // AI, LAN transfer or per-type "open with" settings. Drop the sync-only
+    // tables and the settings rows those features left behind; the clipboard
+    // history itself is kept. Every step is idempotent.
+    if current_version < 21 {
+        conn.execute("DROP TABLE IF EXISTS cloud_sync_tombstones", [])?;
+        conn.execute("DROP TABLE IF EXISTS cloud_sync_local_index", [])?;
+
+        let has_settings: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings')",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_settings {
+            conn.execute(
+                "DELETE FROM settings
+                 WHERE key LIKE 'mqtt_%'
+                    OR key LIKE 'cloud_sync_%'
+                    OR key LIKE 'ai_%'
+                    OR key LIKE 'file_server_%'
+                    OR key LIKE 'file_transfer_%'
+                    OR key = 'e2e_key'",
+                [],
+            )?;
+            conn.execute(
+                "DELETE FROM settings
+                 WHERE key IN (
+                    'app.custom_background',
+                    'app.custom_background_opacity',
+                    'app.language',
+                    'app.text',
+                    'app.rich_text',
+                    'app.image',
+                    'app.video',
+                    'app.code',
+                    'app.url',
+                    'app.file',
+                    'app.hide_dock_icon',
+                    'app.silent_start_mac_reset'
+                 )",
+                [],
+            )?;
+            conn.execute(
+                "UPDATE settings SET value = 'mica' WHERE key = 'app.theme'",
+                [],
+            )?;
+        }
+
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (21)", [])?;
+    }
+
+    // Migration 22: copy rules, tag management, notes-on-items and pinning were
+    // removed from the UI. Drop their settings and stop old pinned rows from
+    // still sorting or rendering as pinned. Tags and notes stay in the rows
+    // (the user chose to keep the data) but are no longer shown.
+    if current_version < 22 {
+        let has_settings: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings')",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_settings {
+            conn.execute(
+                "DELETE FROM settings
+                 WHERE key IN (
+                    'app.cleanup_rules',
+                    'app.app_cleanup_policies',
+                    'app.tag_manager_enabled',
+                    'app.tag_manager_size',
+                    'app.clipboard_tag_font_size',
+                    'app.receive_beta_updates'
+                 )",
+                [],
+            )?;
+        }
+        if has_column(conn, "clipboard_history", "is_pinned")? {
+            conn.execute(
+                "UPDATE clipboard_history SET is_pinned = 0, pinned_order = 0 WHERE is_pinned <> 0",
+                [],
+            )?;
+        }
+        conn.execute("INSERT INTO schema_migrations (version) VALUES (22)", [])?;
+    }
+
     Ok(())
 }
 
@@ -508,7 +592,7 @@ mod tests {
                 row.get(0)
             })
             .expect("read schema version");
-        assert_eq!(version, 20);
+        assert_eq!(version, 22);
     }
 
     #[test]
