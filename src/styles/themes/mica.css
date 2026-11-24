@@ -105,43 +105,11 @@ body.theme-mica::before {
   content: "";
   position: absolute;
   inset: -1px;
-  background-image: var(--custom-bg-image, none);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-image: linear-gradient(160deg, rgba(var(--highlight-rgb), 0.12) 0%, rgba(var(--highlight-rgb), 0.04) 100%);
   z-index: 0;
-  opacity: 0.18;
+  opacity: 0.1;
   pointer-events: none;
   border-radius: calc(var(--shell-radius) + 1px);
-}
-
-/*
- * With a custom image, paint it INSIDE #root (above the shell fill, below
- * content) so it stays visible even when surface opacity makes the shell fully
- * opaque. The behind-glass copy on body::before is disabled to avoid doubling.
- */
-body.has-custom-bg.theme-mica::before {
-  background-image: none;
-  opacity: 0;
-}
-
-body.has-custom-bg.theme-mica #root::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: var(--custom-bg-image, none);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  opacity: var(--custom-bg-opacity, 0.45);
-  pointer-events: none;
-  z-index: 0;
-  border-radius: inherit;
-}
-
-body.theme-mica:not(.has-custom-bg)::before {
-  background-image: linear-gradient(160deg, rgba(var(--highlight-rgb), 0.12) 0%, rgba(var(--highlight-rgb), 0.04) 100%);
-  opacity: 0.1;
 }
 
 body.theme-mica #root {
@@ -201,7 +169,7 @@ body.theme-mica #root > * {
     --scrollbar-thumb-hover-color: rgba(0, 120, 212, 0.72);
   }
 
-  body.theme-mica:not(.light-mode):not(.has-custom-bg)::before {
+  body.theme-mica:not(.light-mode)::before {
     background-image: linear-gradient(150deg, rgba(var(--highlight-rgb), 0.06) 0%, rgba(var(--highlight-rgb), 0.015) 100%);
     opacity: 0.16;
   }

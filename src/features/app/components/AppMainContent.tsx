@@ -1,14 +1,15 @@
-import { memo, useCallback, type ComponentProps, type RefObject, type ReactNode } from "react";
-import { motion, Reorder, useDragControls } from "framer-motion";
+import { lazy, Suspense, useCallback, type ComponentProps, type RefObject, type ReactNode } from "react";
+import { motion } from "framer-motion";
 import type { DragControls } from "framer-motion";
 import { ArrowUp, Clipboard } from "lucide-react";
-import SettingsPanel from "../../settings/components/SettingsPanel";
 import { VirtualClipboardList } from "../../clipboard/components/VirtualClipboardList";
-import FileTransferChatView from "../../file-transfer/components/FileTransferChatView";
-import TagManager from "../../tag/components/TagManager";
-import EmojiPanel from "../../emoji/components/EmojiPanel";
 import type { ClipboardEntry } from "../../../shared/types";
 import type { VirtualClipboardListHandle } from "../../clipboard/types";
+
+// Settings and the emoji catalog are only opened on demand; keeping them out
+// of the startup chunk cuts parse work and memory for the common case.
+const SettingsPanel = lazy(() => import("../../settings/components/SettingsPanel"));
+const EmojiPanel = lazy(() => import("../../emoji/components/EmojiPanel"));
 
 type SettingsPanelProps = ComponentProps<typeof SettingsPanel>;
 type RenderItem = (
@@ -20,19 +21,8 @@ type RenderItem = (
 
 interface AppMainContentProps {
   t: (key: string) => string;
-  theme: string;
-  privacyProtection: boolean;
-  /** Whether a click pastes with formatting (「鼠标粘贴方式」). */
-  primaryPasteKeepsFormat: boolean;
   showSettings: boolean;
-  showTagManager: boolean;
-  tagManagerEnabled: boolean;
   showEmojiPanel: boolean;
-  chatMode: boolean;
-  localIp: string;
-  actualPort: string;
-  fileTransferAccessToken: string;
-  fileTransferLanKey: string;
   settingsPanelProps: SettingsPanelProps;
   emojiFavorites: string[];
   setEmojiFavorites: (val: string[] | ((prev: string[]) => string[])) => void;
@@ -46,17 +36,10 @@ interface AppMainContentProps {
   onClearTypeFilter: () => void;
   /** How the open-window hotkey reads on this platform; empty if none is set. */
   openHotkeyLabel: string;
-  pinnedItems: ClipboardEntry[];
-  unpinnedItems: ClipboardEntry[];
   compactMode: boolean;
   selectedIndex: number;
   isKeyboardMode: boolean;
   virtualListRef: RefObject<VirtualClipboardListHandle | null>;
-  pinnedOrderIds: number[];
-  isDraggingPinned: boolean;
-  handlePinnedIdsReorder: (newOrderIds: number[]) => void;
-  handlePinnedDragStart: () => void;
-  handlePinnedDragEnd: () => void;
   renderItemContent: RenderItem;
   loadMoreHistory: () => void;
   handleListScroll: (offset: number) => void;
@@ -66,59 +49,10 @@ interface AppMainContentProps {
   onScrollTop: () => void;
 }
 
-const SortableItem = memo(({
-  item,
-  index,
-  renderItem,
-  isFirst,
-  onDragStart,
-  onDragEnd,
-  compactMode
-}: {
-  item: ClipboardEntry;
-  index: number;
-  renderItem: RenderItem;
-  isFirst?: boolean;
-  onDragStart?: () => void;
-  onDragEnd?: () => void;
-  compactMode: boolean;
-}) => {
-  const controls = useDragControls();
-  return (
-    <Reorder.Item
-      value={item.id}
-      dragListener={false}
-      dragControls={controls}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className={isFirst ? "first-virtual-item" : undefined}
-      style={{
-        listStyle: "none",
-        overflow: "visible",
-        paddingTop: isFirst ? "4px" : undefined
-      }}
-    >
-      <div style={{ paddingBottom: compactMode ? "2px" : "4px" }}>
-        {renderItem(item, index, controls, true)}
-      </div>
-    </Reorder.Item>
-  );
-});
-
 const AppMainContent = ({
   t,
-  theme,
-  privacyProtection,
-  primaryPasteKeepsFormat,
   showSettings,
-  showTagManager,
-  tagManagerEnabled,
   showEmojiPanel,
-  chatMode,
-  localIp,
-  actualPort,
-  fileTransferAccessToken,
-  fileTransferLanKey,
   settingsPanelProps,
   emojiFavorites,
   setEmojiFavorites,
@@ -130,17 +64,10 @@ const AppMainContent = ({
   typeFiltered,
   onClearTypeFilter,
   openHotkeyLabel,
-  pinnedItems,
-  unpinnedItems,
   compactMode,
   selectedIndex,
   isKeyboardMode,
   virtualListRef,
-  pinnedOrderIds,
-  isDraggingPinned,
-  handlePinnedIdsReorder,
-  handlePinnedDragStart,
-  handlePinnedDragEnd,
   renderItemContent,
   loadMoreHistory,
   handleListScroll,
@@ -149,14 +76,12 @@ const AppMainContent = ({
   showScrollTop,
   onScrollTop
 }: AppMainContentProps) => {
-  const orderedPinnedIds = pinnedOrderIds;
-
   // Hooks must run before the view-specific early returns below.
   // Same wrapper for every row so the top card does not remount when a new
   // copy pushes it down to index 1.
   const renderVirtualItem = useCallback((item: ClipboardEntry, index: number, isFirst?: boolean) => {
-    const el = renderItemContent(item, pinnedItems.length + index, undefined, true);
-    const first = isFirst && pinnedItems.length === 0;
+    const el = renderItemContent(item, index, undefined, true);
+    const first = isFirst;
     return (
       <div
         className={first ? "first-virtual-item" : undefined}
@@ -165,24 +90,7 @@ const AppMainContent = ({
         {el}
       </div>
     );
-  }, [renderItemContent, pinnedItems.length]);
-
-  if (showTagManager && tagManagerEnabled) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        style={{ height: "100%", overflow: "hidden", boxSizing: "border-box", display: "flex", flexDirection: "column" }}
-      >
-        <TagManager
-          t={t}
-          theme={theme}
-          privacyProtection={privacyProtection}
-          primaryPasteKeepsFormat={primaryPasteKeepsFormat}
-        />
-      </motion.div>
-    );
-  }
+  }, [renderItemContent]);
 
   if (showEmojiPanel) {
     return (
@@ -191,41 +99,26 @@ const AppMainContent = ({
         animate={{ opacity: 1, x: 0 }}
         style={{ height: "100%", overflow: "hidden" }}
       >
-        <EmojiPanel
-          t={t}
-          language={settingsPanelProps.language}
-          favorites={emojiFavorites}
-          setFavorites={setEmojiFavorites}
-          activeTab={emojiPanelTab}
-          setActiveTab={setEmojiPanelTab}
-          saveSetting={saveSetting}
-        />
+        <Suspense fallback={null}>
+          <EmojiPanel
+            t={t}
+            favorites={emojiFavorites}
+            setFavorites={setEmojiFavorites}
+            activeTab={emojiPanelTab}
+            setActiveTab={setEmojiPanelTab}
+            saveSetting={saveSetting}
+          />
+        </Suspense>
       </motion.div>
     );
   }
 
   if (showSettings) {
-    if (chatMode) {
-      return (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          style={{ height: "100%", overflow: "hidden" }}
-        >
-          <FileTransferChatView
-            t={t}
-            localIp={localIp}
-            actualPort={actualPort}
-            accessToken={fileTransferAccessToken}
-            lanKey={fileTransferLanKey}
-          />
-        </motion.div>
-      );
-    }
-
     return (
       <div className="settings-view">
-        <SettingsPanel {...settingsPanelProps} />
+        <Suspense fallback={null}>
+          <SettingsPanel {...settingsPanelProps} />
+        </Suspense>
       </div>
     );
   }
@@ -273,34 +166,10 @@ const AppMainContent = ({
         <div className="history-list-container">
           <VirtualClipboardList
             ref={virtualListRef}
-            items={unpinnedItems}
+            items={filteredHistory}
             compactMode={compactMode}
-            selectedIndex={selectedIndex - pinnedItems.length}
+            selectedIndex={selectedIndex}
             isKeyboardMode={isKeyboardMode}
-            header={
-              pinnedItems.length > 0 ? (
-                <Reorder.Group
-                  axis="y"
-                  values={orderedPinnedIds}
-                  onReorder={handlePinnedIdsReorder}
-                  className={isDraggingPinned ? "pinned-reorder dragging" : "pinned-reorder"}
-                  style={{ listStyle: "none", padding: 0 }}
-                >
-                  {pinnedItems.map((item, index) => (
-                    <SortableItem
-                      key={item.id}
-                      item={item}
-                      index={index}
-                      renderItem={renderItemContent}
-                      isFirst={index === 0}
-                      onDragStart={handlePinnedDragStart}
-                      onDragEnd={handlePinnedDragEnd}
-                      compactMode={compactMode}
-                    />
-                  ))}
-                </Reorder.Group>
-              ) : null
-            }
             renderItem={renderVirtualItem}
             onLoadMore={loadMoreHistory}
             onScroll={handleListScroll}

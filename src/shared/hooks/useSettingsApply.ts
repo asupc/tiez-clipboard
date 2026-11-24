@@ -2,9 +2,7 @@ import { getNativePaletteStyle, normalizeNativePalette } from "../config/nativeP
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { applyNativePalette, applyThemeClasses, normalizeThemeId } from "../config/themes";
-import { DEFAULT_THEME } from "../config/themes";
-import { ensureInstalledThemeStyle } from "../lib/themePackages";
+import { applyNativePalette, applyThemeClasses } from "../config/themes";
 
 interface UseSettingsApplyOptions {
   theme: string;
@@ -16,7 +14,6 @@ interface UseSettingsApplyOptions {
   hideUnselectedItemActions: boolean;
   settingsLoaded: boolean;
   clipboardItemFontSize: number;
-  clipboardTagFontSize: number;
   surfaceOpacity: number;
   showAppBorder: boolean;
 }
@@ -31,7 +28,6 @@ export const useSettingsApply = ({
   hideUnselectedItemActions,
   settingsLoaded,
   clipboardItemFontSize,
-  clipboardTagFontSize,
   surfaceOpacity,
   showAppBorder
 }: UseSettingsApplyOptions) => {
@@ -42,7 +38,6 @@ export const useSettingsApply = ({
     const body = document.body;
 
     let disposed = false;
-    const normalizedTheme = normalizeThemeId(theme);
 
     const applyExplicitMode = (mode: "light" | "dark") => {
       if (disposed) return;
@@ -71,12 +66,9 @@ export const useSettingsApply = ({
     };
 
     const applySelectedTheme = async () => {
-      const installedThemeReady = await ensureInstalledThemeStyle(normalizedTheme);
-      if (disposed) return;
-      const effectiveTheme = installedThemeReady ? normalizedTheme : DEFAULT_THEME;
-      applyThemeClasses(effectiveTheme, root, body);
+      applyThemeClasses(root, body);
       invoke("set_theme", {
-        theme: effectiveTheme,
+        theme: "mica",
         colorMode,
         showAppBorder,
       }).catch(console.error);
@@ -143,7 +135,7 @@ export const useSettingsApply = ({
 
   useEffect(() => {
     if (!settingsLoaded) return;
-    applyNativePalette(theme, nativePalette, document.documentElement, document.body);
+    applyNativePalette(nativePalette, document.documentElement, document.body);
     try {
       localStorage.setItem("tiez_native_palette_tokens", JSON.stringify({
         palette: normalizeNativePalette(nativePalette), styles: getNativePaletteStyle(nativePalette)
@@ -155,11 +147,10 @@ export const useSettingsApply = ({
     if (!settingsLoaded) return;
     const root = document.documentElement;
     root.style.setProperty("--clipboard-item-font-size", `${clipboardItemFontSize}px`);
-    root.style.setProperty("--clipboard-tag-font-size", `${clipboardTagFontSize}px`);
     const safeSurfaceOpacity = Number.isFinite(surfaceOpacity)
       ? Math.min(100, Math.max(0, surfaceOpacity))
       : 50;
     const scale = Math.min(2, Math.max(0, safeSurfaceOpacity / 50));
     root.style.setProperty("--surface-opacity-scale", scale.toString());
-  }, [clipboardItemFontSize, clipboardTagFontSize, surfaceOpacity, settingsLoaded]);
+  }, [clipboardItemFontSize, surfaceOpacity, settingsLoaded]);
 };

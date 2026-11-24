@@ -1,17 +1,10 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { formatError } from "../lib/errorMessage";
 
-// Rendered above App, so translations are not loaded yet; the main window
-// mirrors the chosen language into localStorage for exactly this purpose.
 const TEXT = {
-  zh: { title: "界面异常", body: "复制记录已保留。\n重新加载后可继续使用。", reload: "重新加载" },
-  tw: { title: "介面異常", body: "複製紀錄已保留。\n重新載入後可繼續使用。", reload: "重新載入" },
-  en: { title: "Something went wrong", body: "Your clipboard history is safe. Reload the window to continue.", reload: "Reload" },
-} as const;
-
-const pickText = () => {
-  const lang = localStorage.getItem("tiez_language");
-  return lang === "en" || lang === "tw" ? TEXT[lang] : TEXT.zh;
+  title: "界面异常",
+  body: "复制记录已保留。\n重新加载后可继续使用。",
+  reload: "重新加载",
 };
 
 interface State {
@@ -32,7 +25,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
 
   render() {
     if (!this.state.error) return this.props.children;
-    const text = pickText();
+    const text = TEXT;
     return (
       <div className="error-boundary" role="alert">
         <h2 className="error-boundary-title">{text.title}</h2>

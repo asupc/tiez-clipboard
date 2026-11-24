@@ -7,12 +7,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { withNativeDialog } from "../../../shared/lib/focus";
 import { ImageOff, Plus, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Locale } from "../../../shared/types";
 import { getEmojiName } from "../lib/emojiNames";
 
 interface EmojiPanelProps {
   t: (key: string) => string;
-  language?: Locale;
   favorites: string[];
   setFavorites: (val: string[] | ((prev: string[]) => string[])) => void;
   activeTab: "emoji" | "favorites";
@@ -344,7 +342,7 @@ const resolveDropPaths = (payload: unknown): string[] => {
 // file arrived.
 let loadedEmojiGroups: EmojiGroup[] | null = null;
 
-const EmojiPanel = ({ t, language = "zh", favorites, setFavorites, activeTab, setActiveTab, saveSetting }: EmojiPanelProps) => {
+const EmojiPanel = ({ t, favorites, setFavorites, activeTab, setActiveTab, saveSetting }: EmojiPanelProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   // Favorites the web view could not show (an unsupported format, a file that
@@ -733,7 +731,7 @@ const EmojiPanel = ({ t, language = "zh", favorites, setFavorites, activeTab, se
                   <div className="emoji-group-title">{EMOJI_GROUP_LABEL_KEYS[group.name] ? t(EMOJI_GROUP_LABEL_KEYS[group.name]) : group.name}</div>
                   <div className="emoji-grid">
                     {group.emojis.map((emoji, emojiIndex) => {
-                      const emojiTitle = getEmojiName(emoji, language === "tw" ? "zh-TW" : language, group.name);
+                      const emojiTitle = getEmojiName(emoji, "zh", group.name);
                       // Plain buttons: hover and press scale in CSS. A motion
                       // component per emoji made opening the panel slow.
                       return (

@@ -9,7 +9,6 @@ type UseSearchScrollOptions = {
   setShowSearchBox: (val: boolean) => void;
   search: string;
   showSettings: boolean;
-  showTagManager: boolean;
   dismissSearchTagFilter?: () => void;
 };
 
@@ -29,7 +28,6 @@ export const useSearchScroll = ({
   setShowSearchBox,
   search,
   showSettings,
-  showTagManager,
   dismissSearchTagFilter
 }: UseSearchScrollOptions) => {
   const scrollTriggerRef = useRef(0);
@@ -42,7 +40,6 @@ export const useSearchScroll = ({
   const showSearchBoxRef = useRef(showSearchBox);
   const searchRef = useRef(search);
   const showSettingsRef = useRef(showSettings);
-  const showTagManagerRef = useRef(showTagManager);
   const setShowSearchBoxRef = useRef(setShowSearchBox);
   const dismissRef = useRef(dismissSearchTagFilter);
 
@@ -50,13 +47,12 @@ export const useSearchScroll = ({
   showSearchBoxRef.current = showSearchBox;
   searchRef.current = search;
   showSettingsRef.current = showSettings;
-  showTagManagerRef.current = showTagManager;
   setShowSearchBoxRef.current = setShowSearchBox;
   dismissRef.current = dismissSearchTagFilter;
 
   const shouldCaptureWheel = useCallback(() => {
     // Pinned search never needs scroll-to-reveal / hide gestures.
-    if (searchBoxPinnedRef.current || showSettingsRef.current || showTagManagerRef.current) {
+    if (searchBoxPinnedRef.current || showSettingsRef.current) {
       return false;
     }
     return showSearchBoxRef.current || listScrollTopRef.current <= AT_TOP_EPSILON;
@@ -82,7 +78,6 @@ export const useSearchScroll = ({
     if (
       searchBoxPinnedRef.current ||
       showSettingsRef.current ||
-      showTagManagerRef.current ||
       !showSearchBoxRef.current ||
       searchRef.current.length > 0
     ) {
@@ -169,7 +164,7 @@ export const useSearchScroll = ({
 
   useEffect(() => {
     syncWheelListener();
-  }, [searchBoxPinned, showSearchBox, showSettings, showTagManager, syncWheelListener]);
+  }, [searchBoxPinned, showSearchBox, showSettings, syncWheelListener]);
 
   // Keep visibility in sync when the persistent preference flips.
   useEffect(() => {

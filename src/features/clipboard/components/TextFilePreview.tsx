@@ -6,9 +6,8 @@ type Preview = { text: string; truncated: boolean };
 
 export const isTextPreviewable = (path: string) => supported.test(path);
 
-export default function TextFilePreview({ path, language }: { path?: string; language: string }) {
+export default function TextFilePreview({ path }: { path?: string }) {
   const [result, setResult] = useState<{ path: string; preview?: Preview; error?: boolean } | null>(null);
-  const en = language === "en";
   useEffect(() => {
     if (!path) return;
     let alive = true;
@@ -21,12 +20,12 @@ export default function TextFilePreview({ path, language }: { path?: string; lan
   }, [path]);
   if (!path) return null;
   const current = result?.path === path ? result : null;
-  return <section className="detail-file-preview" aria-label={en ? "File preview" : "文件预览"}>
-    {!current ? <p role="status">{en ? "Loading…" : "正在加载…"}</p> : current.error
-      ? <p role="status">{en ? "Unable to preview. The file may be missing, unreadable, or not UTF-8 text." : "无法预览：文件可能已删除、无法读取或不是 UTF-8 文本。"}</p>
+  return <section className="detail-file-preview" aria-label="文件预览">
+    {!current ? <p role="status">正在加载…</p> : current.error
+      ? <p role="status">无法预览：文件可能已删除、无法读取或不是 UTF-8 文本。</p>
       : <>
-        <pre className="detail-text is-code">{current.preview?.text || (en ? "Empty file" : "空文件")}</pre>
-        {current.preview?.truncated && <p role="status">{en ? "Showing the first 100 KB." : "仅显示前 100 KB 内容。"}</p>}
+        <pre className="detail-text is-code">{current.preview?.text || "空文件"}</pre>
+        {current.preview?.truncated && <p role="status">仅显示前 100 KB 内容。</p>}
       </>}
   </section>;
 }

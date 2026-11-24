@@ -4,18 +4,15 @@ import { DEFAULT_COLLAPSED_GROUPS } from "../../features/settings/types";
 interface UseSettingsPanelResetOptions {
   showSettings: boolean;
   setCollapsedGroups: (val: Record<string, boolean>) => void;
-  setSettingsSubpage: (val: "home" | "advanced") => void;
 }
 
 export const useSettingsPanelReset = ({
   showSettings,
-  setCollapsedGroups,
-  setSettingsSubpage
+  setCollapsedGroups
 }: UseSettingsPanelResetOptions) => {
   useEffect(() => {
     if (showSettings) {
-      setSettingsSubpage("home");
       setCollapsedGroups(DEFAULT_COLLAPSED_GROUPS);
     }
-  }, [showSettings, setCollapsedGroups, setSettingsSubpage]);
+  }, [showSettings, setCollapsedGroups]);
 };

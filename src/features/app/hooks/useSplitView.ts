@@ -17,12 +17,12 @@ interface UseSplitViewOptions {
   selectedItemId: number | null;
   isKeyboardMode: boolean;
   /** Entry with an open tag/note editor; the pane stays on it meanwhile. */
-  lockedId: number | null;
+  lockedId?: number | null;
   /** Makes a row the selection; unset when arrow-key selection is off. */
   onPointerSelect?: (index: number, id: number) => void;
 }
 
-export const useSplitView = ({ enabled, listVisible, items, selectedItemId, isKeyboardMode, lockedId, onPointerSelect }: UseSplitViewOptions) => {
+export const useSplitView = ({ enabled, listVisible, items, selectedItemId, isKeyboardMode, lockedId = null, onPointerSelect }: UseSplitViewOptions) => {
   const isWide = useWideWindow();
   const [focusedId, setFocusedId] = useState<number | null>(null);
   const dwellRef = useRef<{ id: number | null; timer: number }>({ id: null, timer: 0 });

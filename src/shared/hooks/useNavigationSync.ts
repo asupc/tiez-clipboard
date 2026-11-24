@@ -8,8 +8,6 @@ import { isListCovered, isOtherTextField } from "../lib/listKeys";
 
 interface UseNavigationSyncOptions {
   showSettings: boolean;
-  showTagManager: boolean;
-  chatMode: boolean;
   showEmojiPanel: boolean;
   /** A note or tag is being edited in the list or the detail pane. */
   editingInline: boolean;
@@ -28,8 +26,8 @@ const useOtherTextFieldFocused = (searchInputRef: RefObject<HTMLInputElement | n
   useEffect(() => {
     if (!isTauriRuntime() || isMacPlatform()) return;
 
-    // A focused field that is removed from the page (e.g. the AI follow-up
-    // after it is answered) may get no focusout: watch for that.
+    // A focused field that is removed from the page may get no focusout:
+    // watch for that.
     let observer: MutationObserver | null = null;
     const update = (element: EventTarget | null) => {
       observer?.disconnect();
@@ -86,8 +84,6 @@ const clearRestoredActionFocus = () => {
 
 export const useNavigationSync = ({
   showSettings,
-  showTagManager,
-  chatMode,
   showEmojiPanel,
   editingInline,
   dialogOpen,
@@ -100,9 +96,7 @@ export const useNavigationSync = ({
   // cancelling the edit.
   const shouldDisableNavigation = isListCovered({
     showSettings,
-    showTagManager,
-    chatMode,
-    showEmojiPanel,
+      showEmojiPanel,
     editingInline,
     dialogOpen,
     textFieldFocused

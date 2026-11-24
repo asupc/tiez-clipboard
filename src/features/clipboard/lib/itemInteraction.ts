@@ -7,14 +7,9 @@ export function isKeyboardSelectedItem(
   return isKeyboardMode && selectedItemId !== null && itemId === selectedItemId;
 }
 
-/** Editors remain active when the pointer leaves; hover itself is handled by CSS. */
-export function isItemInteractionActive(
-  isKeyboardSelected: boolean,
-  isEditingTags: boolean,
-  isEditingNote: boolean,
-  isAiOptionsOpen: boolean
-): boolean {
-  return isKeyboardSelected || isEditingTags || isEditingNote || isAiOptionsOpen;
+/** A row stays visibly active while its ··· menu is open or it is selected. */
+export function isItemInteractionActive(isKeyboardSelected: boolean): boolean {
+  return isKeyboardSelected;
 }
 
 /**

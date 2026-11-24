@@ -15,8 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import { translations } from "../../../locales";
-import { applyNativePalette, applyThemeClasses, DEFAULT_THEME, normalizeThemeId } from "../../../shared/config/themes";
-import type { Locale } from "../../../shared/types";
+import { applyNativePalette, applyThemeClasses } from "../../../shared/config/themes";
 import { assetUrlToFilePath } from "../../../shared/lib/localImageSrc";
 
 const STICKER_PADDING = 10; // 10px macOS-grade ambient shadow breathing space
@@ -24,10 +23,10 @@ const STICKER_PADDING = 10; // 10px macOS-grade ambient shadow breathing space
 export const PinStickerWindow: React.FC = () => {
   useEffect(() => {
     try {
-      const theme = localStorage.getItem("tiez_theme") || DEFAULT_THEME;
       const colorMode = localStorage.getItem("tiez_color_mode") || "system";
-      applyThemeClasses(normalizeThemeId(theme), document.documentElement, document.body);
-      applyNativePalette(theme, localStorage.getItem("tiez_native_palette") || "default", document.documentElement, document.body);
+      localStorage.setItem("tiez_theme", "mica");
+      applyThemeClasses(document.documentElement, document.body);
+      applyNativePalette(localStorage.getItem("tiez_native_palette") || "default", document.documentElement, document.body);
 
       if (
         colorMode === "dark" ||
@@ -49,14 +48,9 @@ export const PinStickerWindow: React.FC = () => {
     }
   }, []);
 
-  // Mirrored from settings "app.language" by the main window (App saveAppSetting / useSettingsInit).
-  const storedLanguage = localStorage.getItem("tiez_language");
-  const language: Locale = storedLanguage === "en" || storedLanguage === "tw" ? storedLanguage : "zh";
   const t = useCallback(
-    (key: keyof (typeof translations)["zh"]) => {
-      return (translations[language] && (translations[language] as any)[key]) || (translations.zh as any)[key] || key;
-    },
-    [language]
+    (key: keyof (typeof translations)["zh"]) => translations.zh[key] || key,
+    []
   );
   const params = new URLSearchParams(window.location.search);
   const rawSrc = params.get("src") || "";

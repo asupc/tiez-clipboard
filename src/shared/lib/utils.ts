@@ -216,7 +216,7 @@ export const getTagTextColor = (backgroundColor: string, _theme?: string) => {
     ?.candidate || hslCss(hue, tagSaturation, 32);
 };
 
-export const getConciseTime = (timestamp: number, language: Locale = "zh") => {
+export const getConciseTime = (timestamp: number, _language: Locale = "zh") => {
   if (!timestamp || isNaN(timestamp)) return "";
 
   const ms = timestamp < 1e11 ? timestamp * 1000 : timestamp;
@@ -227,16 +227,12 @@ export const getConciseTime = (timestamp: number, language: Locale = "zh") => {
 
   // Less than 1 minute or future timestamp (due to clock skew)
   if (seconds < 60) {
-    if (language === "en") return "Just now";
-    if (language === "tw") return "剛剛";
     return "刚刚";
   }
 
   // Within 1 hour
   if (seconds < 3600) {
     const mins = Math.floor(seconds / 60);
-    if (language === "en") return `${mins}m ago`;
-    if (language === "tw") return `${mins}分鐘前`;
     return `${mins}分钟前`;
   }
 
@@ -263,7 +259,6 @@ export const getConciseTime = (timestamp: number, language: Locale = "zh") => {
     yesterday.getDate() === date.getDate();
 
   if (isYesterday) {
-    if (language === "en") return `Yesterday ${hours}:${minutes}`;
     return `昨天 ${hours}:${minutes}`;
   }
 

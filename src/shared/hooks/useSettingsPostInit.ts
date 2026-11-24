@@ -1,15 +1,7 @@
 import { useEffect } from "react";
 import { normalizeClickPasteMode, type ClickPasteMode } from "../lib/clickPaste";
 import { invoke } from "@tauri-apps/api/core";
-import type { MutableRefObject } from "react";
-import type { AiProfile, AppCleanupPolicy } from "../../features/settings/types";
-import { LEGACY_PRESET_IDS, PRESET_AI_PROFILES, resolveTaskProfile, restoreAiProfiles } from "../../features/settings/aiPresets";
-import type {
-  ClipboardSortMode,
-  QuickPasteModifier,
-  CloudSyncContentPrefs
-} from "../../features/app/types";
-import { DEFAULT_CLOUD_SYNC_CONTENT_PREFS } from "../../features/app/types";
+import type { ClipboardSortMode, QuickPasteModifier } from "../../features/app/types";
 
 const QUICK_PASTE_MODIFIERS = new Set<QuickPasteModifier>([
   "disabled",
@@ -51,9 +43,6 @@ const normalizeClipboardSortMode = (value?: string): ClipboardSortMode =>
 
 interface UseSettingsPostInitOptions {
   settings: Record<string, string> | null;
-  tagManagerSizeRef: MutableRefObject<{ width: number; height: number } | null>;
-  setCustomBackground: (val: string) => void;
-  setCustomBackgroundOpacity: (val: number) => void;
   setSurfaceOpacity: (val: number) => void;
   setPersistent: (val: boolean) => void;
   setPersistentLimitEnabled: (val: boolean) => void;
@@ -69,8 +58,6 @@ interface UseSettingsPostInitOptions {
   setSensitiveMaskPrefixVisible: (val: number) => void;
   setSensitiveMaskSuffixVisible: (val: number) => void;
   setSensitiveMaskEmailDomain: (val: boolean) => void;
-  setCleanupRules: (val: string) => void;
-  setAppCleanupPolicies: (val: AppCleanupPolicy[]) => void;
   setSilentStart: (val: boolean) => void;
   setFollowMouse: (val: boolean) => void;
   setShowAppBorder: (val: boolean) => void;
@@ -86,7 +73,6 @@ interface UseSettingsPostInitOptions {
   setClickCopyOnly: (val: boolean) => void;
   setClickPasteMode: (val: ClickPasteMode) => void;
   setHideTrayIcon: (val: boolean) => void;
-  setHideDockIcon: (val: boolean) => void;
   setEdgeDocking: (val: boolean) => void;
   setSearchBoxPinned: (val: boolean) => void;
   setShowSearchBox: (val: boolean) => void;
@@ -94,31 +80,6 @@ interface UseSettingsPostInitOptions {
   setArrowKeySelection: (val: boolean) => void;
   setLightModeEnabled: (val: boolean) => void;
   setLightModeIdleMinutes: (val: number) => void;
-  setMqttEnabled: (val: boolean) => void;
-  setMqttServer: (val: string) => void;
-  setMqttPort: (val: string) => void;
-  setMqttUser: (val: string) => void;
-  setMqttPass: (val: string) => void;
-  setMqttTopic: (val: string) => void;
-  setMqttProtocol: (val: string) => void;
-  setMqttWsPath: (val: string) => void;
-  setMqttNotificationEnabled: (val: boolean) => void;
-  setCloudSyncEnabled: (val: boolean) => void;
-  setCloudSyncAuto: (val: boolean) => void;
-  setCloudSyncProvider: (val: "http" | "webdav") => void;
-  setCloudSyncServer: (val: string) => void;
-  setCloudSyncApiKey: (val: string) => void;
-  setCloudSyncIntervalSec: (val: string) => void;
-  setCloudSyncSnapshotIntervalMin: (val: string) => void;
-  setCloudSyncWebdavUrl: (val: string) => void;
-  setCloudSyncWebdavUsername: (val: string) => void;
-  setCloudSyncWebdavPassword: (val: string) => void;
-  setCloudSyncWebdavBasePath: (val: string) => void;
-  setCloudSyncContentPrefs: (val: CloudSyncContentPrefs) => void;
-  setFileServerAutoClose: (val: boolean) => void;
-  setFileTransferAutoOpen: (val: boolean) => void;
-  setFileTransferAutoCopy: (val: boolean) => void;
-  setFileServerPort: (val: string) => void;
   setSequentialHotkey: (val: string) => void;
   setPlainPasteHotkey: (val: string) => void;
   setSearchHotkey: (val: string) => void;
@@ -127,27 +88,16 @@ interface UseSettingsPostInitOptions {
   setSoundEnabled: (val: boolean) => void;
   setPasteSoundEnabled: (val: boolean) => void;
   setSoundVolume: (val: number) => void;
-  setAiEnabled: (val: boolean) => void;
-  setAiTargetLang: (val: string) => void;
   setIsWindowPinned: (val: boolean) => void;
-  setAiProfiles: (val: AiProfile[]) => void;
-  setAiAssignedProfileTask: (val: string) => void;
-  setAiAssignedProfileMouthpiece: (val: string) => void;
-  setAiAssignedProfileTranslate: (val: string) => void;
   setSettingsLoaded: (val: boolean) => void;
   setClipboardItemFontSize: (val: number) => void;
-  setClipboardTagFontSize: (val: number) => void;
   setEmojiPanelEnabled: (val: boolean) => void;
-  setTagManagerEnabled: (val: boolean) => void;
   setEmojiPanelTab: (val: "emoji" | "favorites") => void;
   setEmojiFavorites: (val: string[]) => void;
 }
 
 export const useSettingsPostInit = ({
   settings,
-  tagManagerSizeRef,
-  setCustomBackground,
-  setCustomBackgroundOpacity,
   setSurfaceOpacity,
   setPersistent,
   setPersistentLimitEnabled,
@@ -163,8 +113,6 @@ export const useSettingsPostInit = ({
   setSensitiveMaskPrefixVisible,
   setSensitiveMaskSuffixVisible,
   setSensitiveMaskEmailDomain,
-  setCleanupRules,
-  setAppCleanupPolicies,
   setSilentStart,
   setFollowMouse,
   setShowAppBorder,
@@ -180,7 +128,6 @@ export const useSettingsPostInit = ({
   setClickCopyOnly,
   setClickPasteMode,
   setHideTrayIcon,
-  setHideDockIcon,
   setEdgeDocking,
   setSearchBoxPinned,
   setShowSearchBox,
@@ -188,31 +135,6 @@ export const useSettingsPostInit = ({
   setArrowKeySelection,
   setLightModeEnabled,
   setLightModeIdleMinutes,
-  setMqttEnabled,
-  setMqttServer,
-  setMqttPort,
-  setMqttUser,
-  setMqttPass,
-  setMqttTopic,
-  setMqttProtocol,
-  setMqttWsPath,
-  setMqttNotificationEnabled,
-  setCloudSyncEnabled,
-  setCloudSyncAuto,
-  setCloudSyncProvider,
-  setCloudSyncServer,
-  setCloudSyncApiKey,
-  setCloudSyncIntervalSec,
-  setCloudSyncSnapshotIntervalMin,
-  setCloudSyncWebdavUrl,
-  setCloudSyncWebdavUsername,
-  setCloudSyncWebdavPassword,
-  setCloudSyncWebdavBasePath,
-  setCloudSyncContentPrefs,
-  setFileServerAutoClose,
-  setFileTransferAutoOpen,
-  setFileTransferAutoCopy,
-  setFileServerPort,
   setSequentialHotkey,
   setPlainPasteHotkey,
   setSearchHotkey,
@@ -221,40 +143,17 @@ export const useSettingsPostInit = ({
   setSoundEnabled,
   setPasteSoundEnabled,
   setSoundVolume,
-  setAiEnabled,
-  setAiTargetLang,
   setIsWindowPinned,
-  setAiProfiles,
-  setAiAssignedProfileTask,
-  setAiAssignedProfileMouthpiece,
-  setAiAssignedProfileTranslate,
   setSettingsLoaded,
   setClipboardItemFontSize,
-  setClipboardTagFontSize,
   setEmojiPanelEnabled,
-  setTagManagerEnabled,
   setEmojiPanelTab,
   setEmojiFavorites
 }: UseSettingsPostInitOptions) => {
   useEffect(() => {
     if (!settings) return;
 
-    if (settings["app.tag_manager_size"]) {
-      try {
-        const parsed = JSON.parse(settings["app.tag_manager_size"]);
-        if (parsed && typeof parsed.width === "number" && typeof parsed.height === "number") {
-          tagManagerSizeRef.current = { width: parsed.width, height: parsed.height };
-        }
-      } catch (e) {
-        console.warn("Invalid tag manager size:", e);
-      }
-    }
-
     // Theme application is centralized in the theme effect below
-    if (settings["app.custom_background"]) setCustomBackground(settings["app.custom_background"]);
-    if (settings["app.custom_background_opacity"]) {
-      setCustomBackgroundOpacity(parseInt(settings["app.custom_background_opacity"]));
-    }
     if (settings["app.surface_opacity"]) {
       const next = parseInt(settings["app.surface_opacity"]);
       if (Number.isFinite(next)) {
@@ -265,15 +164,8 @@ export const useSettingsPostInit = ({
       const next = parseInt(settings["app.clipboard_item_font_size"]);
       if (Number.isFinite(next)) setClipboardItemFontSize(next);
     }
-    if (settings["app.clipboard_tag_font_size"]) {
-      const next = parseInt(settings["app.clipboard_tag_font_size"]);
-      if (Number.isFinite(next)) setClipboardTagFontSize(next);
-    }
     if (settings["app.emoji_panel_enabled"] !== undefined) {
       setEmojiPanelEnabled(settings["app.emoji_panel_enabled"] === "true");
-    }
-    if (settings["app.tag_manager_enabled"] !== undefined) {
-      setTagManagerEnabled(settings["app.tag_manager_enabled"] !== "false");
     }
     if (settings["app.emoji_panel_tab"] === "favorites" || settings["app.emoji_panel_tab"] === "emoji") {
       setEmojiPanelTab(settings["app.emoji_panel_tab"] as "emoji" | "favorites");
@@ -324,32 +216,6 @@ export const useSettingsPostInit = ({
     if (settings["app.sensitive_mask_email_domain"] !== undefined) {
       setSensitiveMaskEmailDomain(settings["app.sensitive_mask_email_domain"] === "true");
     }
-    if (settings["app.cleanup_rules"] !== undefined) {
-      setCleanupRules(settings["app.cleanup_rules"] || "");
-    }
-    if (settings["app.app_cleanup_policies"]) {
-      try {
-        const parsed = JSON.parse(settings["app.app_cleanup_policies"]);
-        if (Array.isArray(parsed)) {
-          setAppCleanupPolicies(
-            parsed.filter(
-              (item): item is AppCleanupPolicy =>
-                !!item &&
-                typeof item === "object" &&
-                typeof item.id === "string" &&
-                typeof item.enabled === "boolean" &&
-                typeof item.appName === "string" &&
-                typeof item.appPath === "string" &&
-                (item.action === "ignore" || item.action === "clean") &&
-                Array.isArray(item.contentTypes) &&
-                typeof item.cleanupRules === "string"
-            )
-          );
-        }
-      } catch (e) {
-        console.warn("Invalid app cleanup policies:", e);
-      }
-    }
     setSilentStart(settings["app.silent_start"] !== "false");
     setFollowMouse(settings["app.follow_mouse"] === "true");
     setShowAppBorder(settings["app.show_app_border"] === "true");
@@ -368,7 +234,6 @@ export const useSettingsPostInit = ({
     setClickCopyOnly(settings["app.click_copy_only"] === "true");
     setClickPasteMode(normalizeClickPasteMode(settings["app.click_paste_mode"]));
     setHideTrayIcon(settings["app.hide_tray_icon"] === "true");
-    setHideDockIcon(settings["app.hide_dock_icon"] === "true");
     const edgeDockingEnabled = settings["app.edge_docking"] === "true";
     setEdgeDocking(edgeDockingEnabled);
 
@@ -384,57 +249,6 @@ export const useSettingsPostInit = ({
       setLightModeIdleMinutes(Number.isFinite(mins) ? Math.min(240, Math.max(1, mins)) : 15);
     }
 
-    setMqttEnabled(settings["mqtt_enabled"] === "true");
-    setMqttServer(settings["mqtt_server"] || "");
-
-    setMqttPort(settings["mqtt_port"] || "1883");
-    setMqttUser(settings["mqtt_username"] || "");
-    setMqttPass(settings["mqtt_password"] || "");
-    if (settings["mqtt_topic"]) {
-      setMqttTopic(settings["mqtt_topic"]);
-    } else {
-      // Same shape as the topic the MQTT client creates (128 random bits),
-      // saved now so the pairing QR shows the topic the client will use.
-      const bytes = crypto.getRandomValues(new Uint8Array(16));
-      const topic = `tiez/tiez_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
-      setMqttTopic(topic);
-      invoke("save_setting", { key: "mqtt_topic", value: topic }).catch(console.error);
-    }
-    setMqttProtocol(settings["mqtt_protocol"] || "mqtt://");
-    setMqttWsPath(settings["mqtt_ws_path"] || "/mqtt");
-    setMqttNotificationEnabled(settings["mqtt_notification_enabled"] !== "false");
-    setCloudSyncEnabled(settings["cloud_sync_enabled"] === "true");
-    setCloudSyncAuto(settings["cloud_sync_auto"] !== "false");
-    setCloudSyncProvider(settings["cloud_sync_provider"] === "http" ? "http" : "webdav");
-    setCloudSyncServer(settings["cloud_sync_server"] || "");
-    setCloudSyncApiKey(settings["cloud_sync_api_key"] || "");
-    setCloudSyncIntervalSec(settings["cloud_sync_interval_sec"] || "120");
-    setCloudSyncSnapshotIntervalMin(settings["cloud_sync_snapshot_interval_min"] || "720");
-    setCloudSyncWebdavUrl(settings["cloud_sync_webdav_url"] || "");
-    setCloudSyncWebdavUsername(settings["cloud_sync_webdav_username"] || "");
-    setCloudSyncWebdavPassword(settings["cloud_sync_webdav_password"] || "");
-    setCloudSyncWebdavBasePath(settings["cloud_sync_webdav_base_path"] || "tiez-sync");
-
-    try {
-      const raw = settings["cloud_sync_content_prefs"];
-      if (raw !== undefined && String(raw).trim() !== "") {
-        const parsed = JSON.parse(String(raw)) as Record<string, unknown>;
-        setCloudSyncContentPrefs({
-          text: parsed.text !== false,
-          image: parsed.image !== false,
-          file_path: parsed.file_path !== false,
-          emoji: parsed.emoji !== false
-        });
-      } else {
-        setCloudSyncContentPrefs({ ...DEFAULT_CLOUD_SYNC_CONTENT_PREFS });
-      }
-    } catch {
-      setCloudSyncContentPrefs({ ...DEFAULT_CLOUD_SYNC_CONTENT_PREFS });
-    }
-    setFileServerAutoClose(settings["file_transfer_auto_close"] === "true");
-    setFileTransferAutoOpen(settings["file_transfer_auto_open"] === "true");
-    setFileTransferAutoCopy(settings["file_transfer_auto_copy"] === "true");
-    if (settings["file_server_port"]) setFileServerPort(settings["file_server_port"]);
     if (settings["app.sequential_hotkey"] !== undefined) setSequentialHotkey(settings["app.sequential_hotkey"]);
     if (settings["app.plain_paste_hotkey"] !== undefined) setPlainPasteHotkey(settings["app.plain_paste_hotkey"]);
     if (settings["app.search_hotkey"] !== undefined) setSearchHotkey(settings["app.search_hotkey"]);
@@ -454,93 +268,15 @@ export const useSettingsPostInit = ({
         setSoundVolume(Math.max(0, volume > 1 ? Math.min(volume, 100) / 100 : volume));
       }
     }
-    if (settings["ai_enabled"]) setAiEnabled(settings["ai_enabled"] === "true");
-    if (settings["ai_target_lang"]) setAiTargetLang(settings["ai_target_lang"]);
     if (settings["app.window_pinned"] === "true") {
       setIsWindowPinned(true);
       invoke("set_window_pinned", { pinned: true }).catch(console.error);
     }
 
-    // 1. PRESETS
-    const recommended = PRESET_AI_PROFILES;
-
-    // 2. LOAD OR INIT
-    let finalProfiles: AiProfile[] = recommended;
-    if (settings["ai_profiles"]) {
-      try {
-        const parsed = JSON.parse(settings["ai_profiles"]);
-        if (Array.isArray(parsed)) {
-          finalProfiles = restoreAiProfiles(parsed);
-          // The thinking budget used to be one global setting; carry it into each profile.
-          const legacyBudget = Number(settings["ai_thinking_budget"]);
-          if (legacyBudget > 0) {
-            finalProfiles = finalProfiles.map((profile) =>
-              profile.thinkingBudget ? profile : { ...profile, thinkingBudget: legacyBudget }
-            );
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      // First time initialization
-      invoke("save_setting", {
-        key: "ai_profiles",
-        value: JSON.stringify(recommended)
-      }).catch(console.error);
-    }
-    if (settings["ai_profiles"]) {
-      invoke("save_setting", {
-        key: "ai_profiles",
-        value: JSON.stringify(finalProfiles)
-      }).catch(console.error);
-    }
-    setAiProfiles(finalProfiles);
-
-    // 3. ASSIGNMENTS
-    // Legacy LongCat ids map to their DeepSeek successors; a task stranded on a
-    // keyless preset or a deleted model moves to the user's own keyed model.
-    const migrateAssignedProfile = (value: string | undefined, fallback: string) => {
-      const id = !value
-        ? fallback
-        : LEGACY_PRESET_IDS.has(value)
-          ? (value === "lc_flash_v1" ? "ds_flash_v1" : "ds_v4_pro_v1")
-          : value;
-      return resolveTaskProfile(id, finalProfiles);
-    };
-
-    const getP = (m: string) =>
-      finalProfiles.find((p) => p.model === m)?.id || finalProfiles[0]?.id || "default";
-
-    const taskProfile = migrateAssignedProfile(settings["ai_assigned_profile_task"], getP("deepseek-flash"));
-    const mouthpieceProfile = migrateAssignedProfile(
-      settings["ai_assigned_profile_mouthpiece"],
-      getP("deepseek-v4-pro")
-    );
-    const translateProfile = migrateAssignedProfile(
-      settings["ai_assigned_profile_translate"],
-      getP("deepseek-flash")
-    );
-    setAiAssignedProfileTask(taskProfile);
-    setAiAssignedProfileMouthpiece(mouthpieceProfile);
-    setAiAssignedProfileTranslate(translateProfile);
-    if (taskProfile !== settings["ai_assigned_profile_task"]) {
-      invoke("save_setting", { key: "ai_assigned_profile_task", value: taskProfile }).catch(console.error);
-    }
-    if (mouthpieceProfile !== settings["ai_assigned_profile_mouthpiece"]) {
-      invoke("save_setting", { key: "ai_assigned_profile_mouthpiece", value: mouthpieceProfile }).catch(console.error);
-    }
-    if (translateProfile !== settings["ai_assigned_profile_translate"]) {
-      invoke("save_setting", { key: "ai_assigned_profile_translate", value: translateProfile }).catch(console.error);
-    }
-
     setSettingsLoaded(true);
   }, [
     settings,
-    tagManagerSizeRef,
-    setCustomBackground,
-    setCustomBackgroundOpacity,
-    setSurfaceOpacity,
+      setSurfaceOpacity,
     setPersistent,
     setPersistentLimitEnabled,
     setPersistentLimit,
@@ -552,8 +288,6 @@ export const useSettingsPostInit = ({
     setPrivacyProtection,
     setPrivacyProtectionKinds,
     setPrivacyProtectionCustomRules,
-    setCleanupRules,
-    setAppCleanupPolicies,
     setSilentStart,
     setFollowMouse,
     setShowAppBorder,
@@ -569,7 +303,6 @@ export const useSettingsPostInit = ({
     setClickCopyOnly,
     setClickPasteMode,
     setHideTrayIcon,
-    setHideDockIcon,
     setEdgeDocking,
     setSearchBoxPinned,
     setShowSearchBox,
@@ -577,31 +310,6 @@ export const useSettingsPostInit = ({
     setArrowKeySelection,
     setLightModeEnabled,
     setLightModeIdleMinutes,
-    setMqttEnabled,
-    setMqttServer,
-    setMqttPort,
-    setMqttUser,
-    setMqttPass,
-    setMqttTopic,
-    setMqttProtocol,
-    setMqttWsPath,
-    setMqttNotificationEnabled,
-    setCloudSyncEnabled,
-    setCloudSyncAuto,
-    setCloudSyncProvider,
-    setCloudSyncServer,
-    setCloudSyncApiKey,
-    setCloudSyncIntervalSec,
-    setCloudSyncSnapshotIntervalMin,
-    setCloudSyncWebdavUrl,
-    setCloudSyncWebdavUsername,
-    setCloudSyncWebdavPassword,
-    setCloudSyncWebdavBasePath,
-    setCloudSyncContentPrefs,
-    setFileServerAutoClose,
-    setFileTransferAutoOpen,
-    setFileTransferAutoCopy,
-    setFileServerPort,
     setSequentialHotkey,
     setPlainPasteHotkey,
     setSearchHotkey,
@@ -610,19 +318,11 @@ export const useSettingsPostInit = ({
     setSoundEnabled,
     setPasteSoundEnabled,
     setSoundVolume,
-    setAiEnabled,
-    setAiTargetLang,
     setIsWindowPinned,
-    setAiProfiles,
-    setAiAssignedProfileTask,
-    setAiAssignedProfileMouthpiece,
-    setAiAssignedProfileTranslate,
     setSettingsLoaded,
     setClipboardItemFontSize,
-    setClipboardTagFontSize,
-    setEmojiPanelEnabled,
-    setTagManagerEnabled,
-    setEmojiPanelTab,
+      setEmojiPanelEnabled,
+      setEmojiPanelTab,
     setEmojiFavorites
   ]);
 };

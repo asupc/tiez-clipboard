@@ -7,7 +7,7 @@ test("the default first-item target is not visibly selected", () => {
 });
 
 test("a remembered mouse-click target does not retain selection", () => {
-  assert.equal(isItemInteractionActive(isKeyboardSelectedItem(2, 2, false), false, false, false), false);
+  assert.equal(isItemInteractionActive(isKeyboardSelectedItem(2, 2, false)), false);
 });
 
 test("keyboard navigation highlights only its selected target", () => {
@@ -17,20 +17,11 @@ test("keyboard navigation highlights only its selected target", () => {
 });
 
 test("keyboard selection survives without hover", () => {
-  assert.equal(isItemInteractionActive(true, false, false, false), true);
+  assert.equal(isItemInteractionActive(true), true);
 });
 
-test("tag and note editors remain active without hover", () => {
-  assert.equal(isItemInteractionActive(false, true, false, false), true);
-  assert.equal(isItemInteractionActive(false, false, true, false), true);
-});
-
-test("AI options remain usable without hover", () => {
-  assert.equal(isItemInteractionActive(false, false, false, true), true);
-});
-
-test("closing an editor restores the inactive state", () => {
-  assert.equal(isItemInteractionActive(false, false, false, false), false);
+test("an unselected row stays inactive", () => {
+  assert.equal(isItemInteractionActive(false), false);
 });
 
 const typed = {

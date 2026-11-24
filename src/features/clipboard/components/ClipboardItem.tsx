@@ -1,33 +1,23 @@
 import { getAppliedNativePalette } from "../../../shared/config/themes";
-import { useRef, useId, useEffect, useLayoutEffect, useState, useMemo, memo } from "react";
+import { useRef, useId, useEffect, useState, useMemo, memo } from "react";
 import { createPortal } from "react-dom";
-import type { CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { currentMonitor, getCurrentWindow, LogicalSize, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
 import { emit, listen } from "@tauri-apps/api/event";
 import {
-    Pin,
-    PinOff,
     Eye,
     EyeOff,
-    ExternalLink,
-    Tag,
-    StickyNote,
     X,
     Copy,
     Trash2,
     MoreHorizontal,
-    Check,
     FileText,
     Image as ImageIcon,
     Link as LinkIcon,
     Code,
     File,
-    Plus,
     Video,
-    Sparkles,
-    Loader2,
     FileArchive,
     Music,
     FileCode,
@@ -38,15 +28,10 @@ import {
     GripVertical,
     PictureInPicture2
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { isItemInteractionActive } from "../lib/itemInteraction";
 import type { ClipboardItemProps } from "../types";
-import {
-    formatSensitivePreview,
-    getConciseTime,
-    getTagColor,
-    getTagTextColor
-} from "../../../shared/lib/utils";
+import { formatSensitivePreview, getConciseTime } from "../../../shared/lib/utils";
 import HtmlContent from "../../../shared/components/HtmlContent";
 import { toTauriLocalImageSrc } from "../../../shared/lib/localImageSrc";
 import { originalImageSrc, useImageThumbnail, useVideoThumbnail } from "../../../shared/hooks/useImageThumbnail";
@@ -81,8 +66,7 @@ import {
     rememberCompactPreviewPayload,
 } from "../lib/compactPreviewControls";
 import { openPinStickerWindow } from "../lib/pinStickerControls";
-import { activateForInput } from "../../../shared/lib/focus";
-import { getNotePlaceholder, isMacPlatform, isWindowsPlatform } from "../../../shared/lib/platform";
+import { isMacPlatform, isWindowsPlatform } from "../../../shared/lib/platform";
 import { setupDragDataTransfer, createDragGhostBadge, hiddenDragLabel, shouldHideAfterExternalDrop, isShortenedForList, nativeDragPayload } from "../lib/dragDrop";
 
 const COMPACT_PREVIEW_LABEL = "compact-preview";
@@ -845,41 +829,12 @@ const ClipboardItem = ({
     isSensitiveHidden,
     isRevealed,
     canReveal,
-    isEditingTags,
-    isEditingNote,
-    noteDraft,
-    onNoteDraftChange,
-    tagInput,
-    tagSuggestions = [],
     theme,
-    language,
     t,
-    isAIProcessing,
     onSelect,
     onCopy,
     onToggleReveal,
-    onOpen,
-    onTogglePin,
     onDelete,
-    onToggleTagEditor,
-    onToggleNoteEditor,
-    onNoteSave,
-    onNoteEditCancel,
-    onTagInput,
-    onTagAdd,
-    onTagPick,
-    onTagEditCancel,
-    onTagDelete,
-    onAIAction,
-    onInputSubmit,
-    aiQuestion,
-    aiPendingResult,
-    onAIApply,
-    onAIDiscard,
-    aiEnabled,
-    aiOptionsOpen,
-    onAIOptionsToggle,
-    tagColors,
     richTextSnapshotPreview = false,
     showSourceAppIcon = true,
     sensitiveMaskPrefixVisible = 3,
@@ -893,18 +848,6 @@ const ClipboardItem = ({
     disableLayout: _disableLayout
 }: ClipboardItemProps & { compactMode?: boolean, className?: string }) => {
     const itemRef = useRef<HTMLDivElement | null>(null);
-    const tagInputRef = useRef<HTMLInputElement>(null);
-    const noteInputRef = useRef<HTMLTextAreaElement>(null);
-    const ignoreNoteBlurRef = useRef(false);
-    const [localTagInput, setLocalTagInput] = useState(tagInput);
-    // The note text lives in the textarea's own state. The app-wide draft only
-    // carries it across a switch to the detail pane; writing that draft back
-    // into the textarea on every keystroke broke input method composition in
-    // WebKit (the pinyin letters were committed as text).
-    const [localNoteInput, setLocalNoteInput] = useState(item.note || "");
-    const noteInput = localNoteInput;
-    const noteComposingRef = useRef(false);
-    const [localAiOptionsOpen, setLocalAiOptionsOpen] = useState(!!aiOptionsOpen);
     const [snapshotFailed, setSnapshotFailed] = useState(false);
     const [richImageFallbackFailed, setRichImageFallbackFailed] = useState(false);
     const [imageLoadFailed, setImageLoadFailed] = useState(false);
@@ -979,7 +922,6 @@ const ClipboardItem = ({
     );
     const singleFilePath = filePaths.length === 1 ? filePaths[0] : null;
     const [fileIcon, setFileIcon] = useState<string | null>(() => peekFileIcon(singleFilePath) ?? null);
-    const isComposing = useRef(false);
     const richSnapshotImgRef = useRef<HTMLImageElement | null>(null);
     const richSnapshotFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -997,15 +939,6 @@ const ClipboardItem = ({
             };
         })()
         : null;
-    const pickableTagSuggestions = useMemo(() => {
-        if (!isEditingTags) return [];
-        const existing = new Set(item.tags || []);
-        const q = localTagInput.trim().toLowerCase();
-        return tagSuggestions
-            .filter((tag) => !existing.has(tag))
-            .filter((tag) => !q || tag.toLowerCase().includes(q))
-            .slice(0, 14);
-    }, [isEditingTags, item.tags, localTagInput, tagSuggestions]);
 
     useEffect(() => {
         const finishReorder = () => {
@@ -1033,59 +966,6 @@ const ClipboardItem = ({
             if (acquired) void acquired.acquired.finally(() => invoke("release_blur_guard", { owner: acquired.owner }).catch(console.error));
         };
     }, [dragGuardOwner]);
-
-    const [tagSuggestIndex, setTagSuggestIndex] = useState(-1);
-    const tagSuggestListRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        if (!isEditingTags) setTagSuggestIndex(-1);
-    }, [isEditingTags]);
-
-    useEffect(() => {
-        setTagSuggestIndex((prev) => {
-            if (pickableTagSuggestions.length === 0) return -1;
-            if (prev < 0) return -1;
-            return Math.min(prev, pickableTagSuggestions.length - 1);
-        });
-    }, [pickableTagSuggestions]);
-
-    useLayoutEffect(() => {
-        if (tagSuggestIndex < 0 || !tagSuggestListRef.current) return;
-        const row = tagSuggestListRef.current.children[tagSuggestIndex] as HTMLElement | undefined;
-        row?.scrollIntoView({ block: "nearest" });
-    }, [tagSuggestIndex, pickableTagSuggestions]);
-
-    useEffect(() => {
-        if (!isEditingTags || !onTagEditCancel) return;
-
-        const onDocMouseDown = (e: MouseEvent) => {
-            if (e.button !== 0) return;
-            const root = itemRef.current;
-            if (!root) return;
-            const t = e.target as HTMLElement;
-
-            if (root.contains(t)) {
-                if (t.closest(".tag-edit-anchor")) return;
-                if (t.closest(".item-tags-container .tag-chip")) return;
-                if (
-                    t.closest("button") ||
-                    t.closest("input") ||
-                    t.closest("textarea") ||
-                    t.closest('[role="button"]') ||
-                    t.closest(".drag-handle")
-                ) {
-                    return;
-                }
-            }
-
-            onTagEditCancel();
-            e.preventDefault();
-            e.stopPropagation();
-        };
-
-        document.addEventListener("mousedown", onDocMouseDown, true);
-        return () => document.removeEventListener("mousedown", onDocMouseDown, true);
-    }, [isEditingTags, onTagEditCancel]);
 
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
     const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number; placement: 'top' | 'bottom' } | null>(null);
@@ -1136,10 +1016,10 @@ const ClipboardItem = ({
     }, [isMoreMenuOpen]);
 
     useEffect(() => {
-        if ((!compactMode || isEditingTags || isEditingNote) && isMoreMenuOpen) {
+        if (!compactMode && isMoreMenuOpen) {
             setIsMoreMenuOpen(false);
         }
-    }, [compactMode, isEditingTags, isEditingNote, isMoreMenuOpen]);
+    }, [compactMode, isMoreMenuOpen]);
 
     const sensitivePreview = useMemo(
         () => formatSensitivePreview(item.content, item.content_type, {
@@ -1216,15 +1096,6 @@ const ClipboardItem = ({
                 : effectiveRichTextSnapshotSrc;
     const useSnapshotPreviewImage = !!richTextPreviewSrc && richTextPreviewSrc === effectiveRichTextSnapshotSrc;
     const useRichImageFallback = !!richTextPreviewSrc && richTextPreviewSrc === effectiveRichImageFallbackSrc;
-    const visibleTagCount = item.tags?.length || 0;
-    const hasTagsSection = visibleTagCount > 0 || isEditingTags;
-    const hasNoteSection = isEditingNote || (!!item.note && !compactMode);
-    const hasMetaFooter = hasTagsSection || hasNoteSection;
-    // Keep ordinary tags overlaid on the bottom of the preview, but keep notes
-    // and editing controls in flow so they never cover user content.
-    const overlayMetaInPreview =
-        !compactMode && !isEditingTags && !isEditingNote && visibleTagCount > 0 && !item.note;
-    const showFlowMetaFooter = !compactMode && hasMetaFooter && !overlayMetaInPreview;
     const standaloneColorValue = useMemo(
         () => getStandaloneColorValue(item.content_type, item.content),
         [item.content, item.content_type]
@@ -1376,14 +1247,8 @@ const ClipboardItem = ({
             const clipboardItemFontSizeRaw = parseInt(
                 rootStyle.getPropertyValue("--clipboard-item-font-size")
             );
-            const clipboardTagFontSizeRaw = parseInt(
-                rootStyle.getPropertyValue("--clipboard-tag-font-size")
-            );
             const clipboardItemFontSize = Number.isFinite(clipboardItemFontSizeRaw)
                 ? clipboardItemFontSizeRaw
-                : undefined;
-            const clipboardTagFontSize = Number.isFinite(clipboardTagFontSizeRaw)
-                ? clipboardTagFontSizeRaw
                 : undefined;
             const colorMode = document.documentElement.classList.contains("dark-mode") ? "dark" : "light";
             const bounds = await resolveCompactPreviewBounds();
@@ -1415,13 +1280,11 @@ const ClipboardItem = ({
                 sourceAppPath: item.source_app_path,
                 sourceAppIcon: sourceAppIcon,
                 timestamp: item.created_at || item.timestamp,
-                language,
                 theme,
                 colorMode,
                 nativePalette: getAppliedNativePalette(document.documentElement),
                 richTextSnapshotPreview,
                 clipboardItemFontSize,
-                clipboardTagFontSize,
                 ...bounds
             };
             rememberCompactPreviewPayload(requestId, previewPayload);
@@ -1476,15 +1339,6 @@ const ClipboardItem = ({
         }
     };
 
-    // Sync local state when prop changes (e.g. when editor opens)
-    useEffect(() => {
-        setLocalTagInput(tagInput);
-    }, [tagInput]);
-
-    useEffect(() => {
-        setLocalAiOptionsOpen(!!aiOptionsOpen);
-    }, [aiOptionsOpen]);
-
     useEffect(() => {
         setSnapshotFailed(false);
         setRichImageFallbackFailed(false);
@@ -1522,58 +1376,12 @@ const ClipboardItem = ({
         };
     }, [useSnapshotPreviewImage, effectiveRichTextSnapshotSrc, item.id]);
 
-    const showAIOptions = localAiOptionsOpen;
-    const isInteractionActive = isItemInteractionActive(isSelected, isEditingTags, isEditingNote, showAIOptions) || isMoreMenuOpen;
+    const isInteractionActive = isItemInteractionActive(isSelected) || isMoreMenuOpen;
     // Keep a live gate for async hover timers / in-flight show — stale closures
-    // would otherwise re-open the preview while ··· / AI / editors are active.
+    // would otherwise re-open the preview while ··· is active.
     compactPreviewBlockedRef.current =
         isMoreMenuOpen ||
-        moreActionHoverRef.current ||
-        showAIOptions ||
-        isEditingNote ||
-        isEditingTags;
-    const inlineAiVariants = {
-        open: { opacity: 1, height: "auto", marginTop: 8, marginBottom: 8 },
-        collapsed: { opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }
-    };
-    useEffect(() => {
-        if (isEditingTags && tagInputRef.current) {
-            activateForInput()
-                .catch(console.error)
-                .finally(() => {
-                    tagInputRef.current?.focus();
-                });
-        }
-    }, [isEditingTags]);
-
-    useEffect(() => {
-        if (!isEditingNote) {
-            ignoreNoteBlurRef.current = false;
-            return;
-        }
-        // Opening the editor remounts the footer and may briefly steal focus on
-        // the macOS NSPanel — ignore that spurious blur so the editor stays open.
-        ignoreNoteBlurRef.current = true;
-        setLocalNoteInput(noteDraft ?? item.note ?? "");
-        const focusTimer = window.setTimeout(() => {
-            activateForInput()
-                .catch(console.error)
-                .finally(() => {
-                    noteInputRef.current?.focus();
-                    const el = noteInputRef.current;
-                    if (el) {
-                        const len = el.value.length;
-                        el.setSelectionRange(len, len);
-                    }
-                });
-            window.setTimeout(() => {
-                ignoreNoteBlurRef.current = false;
-            }, 200);
-        }, 0);
-        return () => {
-            window.clearTimeout(focusTimer);
-        };
-    }, [isEditingNote, item.note]);
+        moreActionHoverRef.current;
 
     useEffect(() => {
         if (!compactPreviewEnabled) {
@@ -1581,11 +1389,11 @@ const ClipboardItem = ({
         }
     }, [compactPreviewEnabled]);
 
-    // ··· / AI / editors own the row — never leave a hover preview on top.
+    // ··· owns the row — never leave a hover preview on top.
     useEffect(() => {
         if (!compactPreviewBlockedRef.current) return;
         void hideCompactPreview();
-    }, [isMoreMenuOpen, showAIOptions, isEditingNote, isEditingTags]);
+    }, [isMoreMenuOpen]);
 
     useEffect(() => {
         return () => {
@@ -1674,326 +1482,6 @@ const ClipboardItem = ({
         );
     };
 
-    const renderTagsContainer = () => (
-        <div
-            className={`item-tags-container${isEditingTags ? ' tag-edit-active' : ''}`}
-            onMouseDown={(e) => {
-                if ((e.target as HTMLElement).closest("button, input, textarea, .tag-chip, .tag-edit-anchor")) {
-                    e.stopPropagation();
-                }
-            }}
-        >
-            {item.tags?.map((tag) => {
-                const tagBackground = tagColors?.[tag] || getTagColor(tag, theme);
-                const tagTextColor = getTagTextColor(tagBackground, theme);
-                return (
-                    <span
-                        key={tag}
-                        className="tag-chip"
-                        style={{
-                            background: tagBackground,
-                            color: tagTextColor,
-                            '--tag-color': tagBackground,
-                            '--tag-text-color': tagTextColor,
-                        } as CSSProperties}
-                    >
-                        {tag}
-                        {isEditingTags && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onTagDelete(tag);
-                                }}
-                                style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', opacity: 0.72, cursor: 'pointer', display: 'flex' }}
-                            >
-                                <X size={8} />
-                            </button>
-                        )}
-                    </span>
-                );
-            })}
-
-            {isEditingTags && (
-                <div className="tag-edit-anchor">
-                    <div className="tag-edit-input-row">
-                        <input
-                            ref={tagInputRef}
-                            type="text"
-                            value={localTagInput}
-                            onCompositionStart={() => {
-                                isComposing.current = true;
-                            }}
-                            onCompositionEnd={(e) => {
-                                isComposing.current = false;
-                                const val = (e.target as HTMLInputElement).value;
-                                setLocalTagInput(val);
-                                onTagInput(val);
-                            }}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setLocalTagInput(val);
-                                if (!isComposing.current) {
-                                    onTagInput(val);
-                                }
-                            }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Escape') {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    onTagEditCancel?.();
-                                    return;
-                                }
-                                const suggestionCount = pickableTagSuggestions.length;
-                                if (e.key === 'ArrowDown' && suggestionCount > 0 && onTagPick) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setTagSuggestIndex((prev) =>
-                                        prev < 0 ? 0 : Math.min(prev + 1, suggestionCount - 1)
-                                    );
-                                    return;
-                                }
-                                if (e.key === 'ArrowUp' && suggestionCount > 0 && onTagPick) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setTagSuggestIndex((prev) => (prev <= 0 ? -1 : prev - 1));
-                                    return;
-                                }
-                                if (e.key === 'Enter' && !isComposing.current) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    if (
-                                        onTagPick &&
-                                        tagSuggestIndex >= 0 &&
-                                        tagSuggestIndex < suggestionCount
-                                    ) {
-                                        const picked = pickableTagSuggestions[tagSuggestIndex];
-                                        onTagPick(picked);
-                                        setLocalTagInput('');
-                                        setTagSuggestIndex(-1);
-                                    } else {
-                                        onTagAdd();
-                                    }
-                                }
-                            }}
-                            className="tag-input"
-                            aria-autocomplete="list"
-                            aria-controls={
-                                pickableTagSuggestions.length > 0 && onTagPick
-                                    ? `tag-suggest-list-${item.id}`
-                                    : undefined
-                            }
-                            aria-activedescendant={
-                                tagSuggestIndex >= 0 && pickableTagSuggestions.length > 0 && onTagPick
-                                    ? `tag-suggest-opt-${item.id}-${tagSuggestIndex}`
-                                    : undefined
-                            }
-                            placeholder={t('enter_tag_name')}
-                            style={{
-                                background: 'var(--bg-input)',
-                                border: 'none',
-                                borderRadius: '0',
-                                padding: '2px 6px',
-                                fontSize: 'var(--font-size-2xs)',
-                                color: 'var(--text-primary)',
-                                outline: 'none'
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onTagAdd();
-                            }}
-                            className="btn-icon"
-                            style={{ padding: '2px', height: '16px', width: '16px' }}
-                            title={t('add_tag')}
-                        >
-                            <Plus size={10} />
-                        </button>
-                        {compactMode && (
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (localTagInput.trim()) {
-                                        onTagAdd();
-                                    }
-                                    onTagEditCancel?.();
-                                }}
-                                className="btn-icon"
-                                title={t('confirm')}
-                                style={{ padding: '2px', height: '16px', width: '16px' }}
-                            >
-                                <Check size={10} />
-                            </button>
-                        )}
-                    </div>
-                    {pickableTagSuggestions.length > 0 && onTagPick && (
-                        <div
-                            ref={tagSuggestListRef}
-                            id={`tag-suggest-list-${item.id}`}
-                            className="tag-edit-suggestions-popover hide-scrollbar"
-                            role="listbox"
-                            aria-label={t('find_tags')}
-                            onMouseDown={(e) => e.stopPropagation()}
-                        >
-                            {pickableTagSuggestions.map((sTag, sIdx) => {
-                                const bg = tagColors?.[sTag] || getTagColor(sTag, theme);
-                                const fg = getTagTextColor(bg, theme);
-                                return (
-                                    <button
-                                        key={sTag}
-                                        type="button"
-                                        role="option"
-                                        id={`tag-suggest-opt-${item.id}-${sIdx}`}
-                                        aria-selected={tagSuggestIndex === sIdx}
-                                        className={`tag-suggest-item${tagSuggestIndex === sIdx ? ' tag-suggest-item--active' : ''}`}
-                                        onMouseEnter={() => setTagSuggestIndex(sIdx)}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onTagPick(sTag);
-                                            setLocalTagInput('');
-                                            setTagSuggestIndex(-1);
-                                        }}
-                                    >
-                                        <span
-                                            className="tag-suggest-pill"
-                                            style={{
-                                                background: bg,
-                                                color: fg
-                                            }}
-                                        >
-                                            {sTag}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-
-    const renderNoteBlock = () => (
-        <div
-            className={`item-note${isEditingNote ? " item-note-editor" : ""}`}
-            onMouseDown={isEditingNote ? (e) => e.stopPropagation() : undefined}
-            onClick={isEditingNote ? (e) => e.stopPropagation() : undefined}
-        >
-            {isEditingNote ? (
-                <div className="item-note-editor-inner">
-                    <textarea
-                        ref={noteInputRef}
-                        className="item-note-input"
-                        value={noteInput}
-                        placeholder={compactMode ? `${t('add_note')}…` : getNotePlaceholder(t)}
-                        rows={2}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onCompositionStart={() => {
-                            noteComposingRef.current = true;
-                        }}
-                        onCompositionEnd={(e) => {
-                            noteComposingRef.current = false;
-                            const value = (e.target as HTMLTextAreaElement).value;
-                            setLocalNoteInput(value);
-                            onNoteDraftChange?.(value);
-                        }}
-                        onChange={(e) => {
-                            setLocalNoteInput(e.target.value);
-                            if (!noteComposingRef.current) onNoteDraftChange?.(e.target.value);
-                        }}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Escape') {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onNoteEditCancel?.();
-                                return;
-                            }
-                            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onNoteSave(noteInput);
-                            }
-                        }}
-                        onBlur={() => {
-                            if (ignoreNoteBlurRef.current) return;
-                            // Defer so focus moves within the note block don't save/close.
-                            window.setTimeout(() => {
-                                if (ignoreNoteBlurRef.current) return;
-                                const active = document.activeElement;
-                                if (active && noteInputRef.current?.closest(".item-note")?.contains(active)) {
-                                    return;
-                                }
-                                onNoteSave(noteInputRef.current?.value ?? noteInput);
-                            }, 0);
-                        }}
-                    />
-                    <div className="item-note-editor-footer">
-                        <span className="item-note-hint">
-                            {isMacPlatform() ? t("note_editor_hint_mac") : t("note_editor_hint_win")}
-                        </span>
-                        <div className="item-note-actions">
-                            <button
-                                type="button"
-                                className="btn-note-action cancel"
-                                onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                    ignoreNoteBlurRef.current = true;
-                                }}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    ignoreNoteBlurRef.current = false;
-                                    onNoteEditCancel?.();
-                                }}
-                            >
-                                {t('cancel')}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn-note-action save"
-                                onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                    ignoreNoteBlurRef.current = true;
-                                }}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    ignoreNoteBlurRef.current = false;
-                                    onNoteSave(noteInput);
-                                }}
-                            >
-                                {t('save')}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                // Plain text: a click pastes, as anywhere else on the entry.
-                // The full-width note was easy to hit by mistake and opened
-                // the editor; the note button in the actions edits it.
-                <div className="item-note-text" title={item.note}>
-                    <StickyNote size={12} className="item-note-icon" aria-hidden />
-                    <span>{item.note}</span>
-                </div>
-            )}
-        </div>
-    );
-
-    const renderMetaFooter = () => (
-        <div
-            className={`item-meta-footer${isEditingNote ? " editing-note" : ""}${isEditingTags ? " editing-tags" : ""}`}
-            onMouseDown={(e) => {
-                if ((e.target as HTMLElement).closest("button, input, textarea, .tag-chip, .tag-edit-anchor")) {
-                    e.stopPropagation();
-                }
-            }}
-        >
-            {hasNoteSection && renderNoteBlock()}
-            {hasTagsSection && renderTagsContainer()}
-        </div>
-    );
-
     return (
         <motion.div
             ref={itemRef}
@@ -2006,8 +1494,8 @@ const ClipboardItem = ({
             animate={{ marginBottom: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.1 }}
-            draggable={!isEditingTags && !isEditingNote && !isReordering}
-            className={`history-item ${isInteractionActive ? "selected" : ""} ${isDetailFocused ? "detail-focused" : ""} ${compactMode ? "compact" : ""} ${item.is_pinned ? "pinned" : ""} ${isDragging ? "is-dragging" : ""} ${isEditingTags ? "editing-tags" : ""} ${isEditingNote ? "editing-note" : ""} ${className || ''}`}
+            draggable={!isReordering}
+            className={`history-item ${isInteractionActive ? "selected" : ""} ${isDetailFocused ? "detail-focused" : ""} ${compactMode ? "compact" : ""} ${isDragging ? "is-dragging" : ""} ${className || ''}`}
             onPointerDownCapture={(e) => {
                 if (dragReleaseTimerRef.current) {
                     clearTimeout(dragReleaseTimerRef.current);
@@ -2036,32 +1524,6 @@ const ClipboardItem = ({
                     return;
                 }
 
-                if (isEditingTags) {
-                    if (target.closest(".tag-edit-anchor")) return;
-                    if (target.closest(".item-tags-container .tag-chip")) return;
-                    if (target.closest('button, input, textarea, [role="button"], .drag-handle')) {
-                        return;
-                    }
-                    if (target.closest('a')) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onTagEditCancel?.();
-                    return;
-                }
-
-                if (isEditingNote) {
-                    if (target.closest(".item-note-editor") || target.closest(".item-note")) {
-                        return;
-                    }
-                    if (target.closest('button, input, textarea, [role="button"], .drag-handle')) {
-                        return;
-                    }
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onNoteSave(noteInput);
-                    return;
-                }
-
                 if (target.closest('button, input, textarea, [role="button"], .drag-handle')) {
                     return;
                 }
@@ -2074,7 +1536,7 @@ const ClipboardItem = ({
                 pointerDownPosRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
             }}
             onDragStartCapture={(e) => {
-                if (!canExportDragRef.current || isReorderingRef.current || isEditingTags || isEditingNote) {
+                if (!canExportDragRef.current || isReorderingRef.current) {
                     e.preventDefault();
                     e.stopPropagation();
                     return;
@@ -2173,7 +1635,6 @@ const ClipboardItem = ({
                     pressedHereRef.current = false;
                 }, 0);
                 if (!pressedHere) return;
-                if (isEditingTags || isEditingNote) return;
                 if (isDraggingRef.current) return;
 
                 const target = e.target as HTMLElement;
@@ -2201,7 +1662,6 @@ const ClipboardItem = ({
             }}
             onClick={(e) => {
                 if (!pressedHereRef.current) return;
-                if (isEditingTags || isEditingNote) return;
                 if (isDraggingRef.current) return;
                 const target = e.target as HTMLElement;
                 if (target.closest('button, input, textarea, [role="button"], .drag-handle')) {
@@ -2227,13 +1687,6 @@ const ClipboardItem = ({
             }}
             onContextMenu={(e) => {
                 const target = e.target as HTMLElement;
-                if (isEditingTags) {
-                    if (target.closest(".tag-edit-anchor")) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onTagEditCancel?.();
-                    return;
-                }
                 if (target.closest('button, input, textarea, [role="button"], .drag-handle')) {
                     return;
                 }
@@ -2340,7 +1793,7 @@ const ClipboardItem = ({
                             title={t("reorder_pinned")}
                             draggable={false}
                             onPointerDown={(e) => {
-                                if (e.button !== 0 || isEditingTags || isEditingNote) return;
+                                if (e.button !== 0) return;
                                 // Suppress the browser's ancestor drag and start
                                 // only the pointer gesture used for reordering.
                                 e.preventDefault();
@@ -2359,8 +1812,7 @@ const ClipboardItem = ({
                         </div>
                     )}
                     <div className="app-info">
-                        {item.is_pinned && !dragControls && <Pin size={10} style={{ color: 'var(--accent-color)', marginRight: '-2px' }} />}
-                        {showSourceAppIcon
+                            {showSourceAppIcon
                             ? renderSourceAppIcon(sourceAppIcon, item.content_type, item.source_app)
                             : getIcon(item.content_type)}
                         <span>{item.source_app}</span>
@@ -2368,11 +1820,9 @@ const ClipboardItem = ({
                 </div>
 
                 <div className="item-meta-right">
-                    {compactMode && hasTagsSection ? renderTagsContainer() : null}
                     <div className="item-meta-right-slot">
                     <div className="item-actions">
                         {compactMode ? (
-                            (!isEditingTags && !isEditingNote) ? (
                                 <div
                                     className="compact-more-action-wrap"
                                     onMouseEnter={() => {
@@ -2390,10 +1840,7 @@ const ClipboardItem = ({
                                     onMouseLeave={() => {
                                         moreActionHoverRef.current = false;
                                         compactPreviewBlockedRef.current =
-                                            isMoreMenuOpen ||
-                                            showAIOptions ||
-                                            isEditingNote ||
-                                            isEditingTags;
+                                            isMoreMenuOpen;
                                         // Still over the row: resume normal hover preview delay.
                                         if (
                                             compactPreviewBlockedRef.current ||
@@ -2483,19 +1930,6 @@ const ClipboardItem = ({
                                                 </button>
                                             )}
 
-                                            <button
-                                                type="button"
-                                                role="menuitem"
-                                                className="compact-action-menu-item"
-                                                onClick={(e) => {
-                                                    setIsMoreMenuOpen(false);
-                                                    onOpen(e);
-                                                }}
-                                            >
-                                                <ExternalLink size={13} />
-                                                <span>{t('open')}</span>
-                                            </button>
-
                                             {item.content_type === 'image' && !isSensitiveHidden && (
                                                 <button
                                                     type="button"
@@ -2509,65 +1943,6 @@ const ClipboardItem = ({
                                                 >
                                                     <PictureInPicture2 size={13} />
                                                     <span>{t('pin_sticker')}</span>
-                                                </button>
-                                            )}
-
-                                            <button
-                                                type="button"
-                                                role="menuitem"
-                                                className={`compact-action-menu-item ${item.is_pinned ? "is-active" : ""}`}
-                                                onClick={(e) => {
-                                                    setIsMoreMenuOpen(false);
-                                                    onTogglePin(e);
-                                                }}
-                                            >
-                                                {item.is_pinned ? <PinOff size={13} /> : <Pin size={13} />}
-                                                <span>{item.is_pinned ? t('unpin') : t('pin')}</span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                role="menuitem"
-                                                className={`compact-action-menu-item ${item.tags && item.tags.length > 0 ? "is-active" : ""}`}
-                                                onClick={(e) => {
-                                                    setIsMoreMenuOpen(false);
-                                                    onToggleTagEditor(e);
-                                                }}
-                                            >
-                                                <Tag size={13} />
-                                                <span>{t('edit_tags')}</span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                role="menuitem"
-                                                className={`compact-action-menu-item ${item.note ? "is-active" : ""}`}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setIsMoreMenuOpen(false);
-                                                    onToggleNoteEditor(e);
-                                                }}
-                                            >
-                                                <StickyNote size={13} />
-                                                <span>{item.note ? t('edit_note') : t('add_note')}</span>
-                                            </button>
-
-                                            {(item.content_type === 'text' || item.content_type === 'rich_text') && aiEnabled && (
-                                                <button
-                                                    type="button"
-                                                    role="menuitem"
-                                                    className={`compact-action-menu-item ${isAIProcessing || showAIOptions ? "is-active" : ""}`}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setIsMoreMenuOpen(false);
-                                                        if (!isAIProcessing) {
-                                                            setLocalAiOptionsOpen(prev => !prev);
-                                                            onAIOptionsToggle?.();
-                                                        }
-                                                    }}
-                                                >
-                                                    {isAIProcessing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                                                    <span>{t('ai_assistant')}</span>
                                                 </button>
                                             )}
 
@@ -2589,7 +1964,6 @@ const ClipboardItem = ({
                                         document.body
                                     )}
                                 </div>
-                            ) : null
                         ) : (
                             <>
                                 {canReveal && (
@@ -2601,13 +1975,6 @@ const ClipboardItem = ({
                                         {isRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
                                     </button>
                                 )}
-                                <button
-                                    className="btn-icon"
-                                    onClick={onOpen}
-                                    title={t('open')}
-                                >
-                                    <ExternalLink size={12} />
-                                </button>
                                 {item.content_type === 'image' && !isSensitiveHidden && (
                                     <button
                                         className="btn-icon"
@@ -2620,54 +1987,6 @@ const ClipboardItem = ({
                                         <PictureInPicture2 size={12} />
                                     </button>
                                 )}
-                                <button
-                                    className={`btn-icon ${item.is_pinned ? "active" : ""}`}
-                                    onClick={onTogglePin}
-                                    title={item.is_pinned ? t('unpin') : t('pin')}
-                                >
-                                    {item.is_pinned ? <PinOff size={12} /> : <Pin size={12} />}
-                                </button>
-                                <button
-                                    className={`btn-icon ${item.tags && item.tags.length > 0 ? "active" : ""}`}
-                                    onClick={onToggleTagEditor}
-                                    title={t('edit_tags')}
-                                >
-                                    <Tag size={12} />
-                                </button>
-                                <button
-                                    className={`btn-icon ${item.note ? "active" : ""} ${isEditingNote ? "active" : ""}`}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (isEditingNote) {
-                                            onNoteSave(noteInput);
-                                        } else {
-                                            onToggleNoteEditor(e);
-                                        }
-                                    }}
-                                    title={item.note ? t('edit_note') : t('add_note')}
-                                >
-                                    <StickyNote size={12} />
-                                </button>
-                                {(item.content_type === 'text' || item.content_type === 'rich_text') && aiEnabled && (
-                                    <button
-                                        className={`btn-icon ai-btn ${isAIProcessing || showAIOptions ? 'active' : ''}`}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (!isAIProcessing) {
-                                                // Close preview window when opening AI options
-                                                if (!showAIOptions) {
-                                                    hideCompactPreview();
-                                                }
-                                                setLocalAiOptionsOpen(prev => !prev);
-                                                onAIOptionsToggle?.();
-                                            }
-                                        }}
-                                        title={t('ai_assistant')}
-                                    >
-                                        {isAIProcessing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                    </button>
-                                )}
                                 <button className="btn-icon" onClick={onDelete} title={t('delete')}>
                                     <X size={12} />
                                 </button>
@@ -2675,7 +1994,7 @@ const ClipboardItem = ({
                         )}
                     </div>
                     <div className="item-meta-right-info">
-                        {quickPasteHint && item.is_pinned && (
+                        {quickPasteHint && (
                             <span
                                 className="quick-paste-hint"
                                 title={`${t('quick_paste_modifier')}: ${quickPasteHint.combo}`}
@@ -2684,21 +2003,13 @@ const ClipboardItem = ({
                             </span>
                         )}
                         <span className="item-compact-time">
-                            {getConciseTime(item.created_at || item.timestamp, language)}
+                            {getConciseTime(item.created_at || item.timestamp)}
                         </span>
                     </div>
                     </div>
                 </div>
             </div>
-
-            {
-                compactMode && item.is_pinned && (
-                    <div className="compact-pinned-indicator" title={t('pinned')}>
-                        <Pin size={10} fill="currentColor" />
-                    </div>
-                )
-            }
-            <div className={`content-preview-shell${overlayMetaInPreview ? ' has-overlay-meta' : ''}`}>
+            <div className="content-preview-shell">
                 <div data-content-type={item.content_type} className={`content-preview ${item.content_type === 'rich_text' ? 'rich-text' : ''} ${hidesFileCard || item.content_type === 'file' ? 'file-preview' : ''} ${isSensitiveHidden ? 'sensitive-blur' : ''}`}>
                 {item.content_type === "image" ? (
                     <div
@@ -2779,49 +2090,6 @@ const ClipboardItem = ({
                     </div>
                 ) : item.content_type === "file" ? (
                     renderFilePreview()
-                ) : isAIProcessing ? (
-                    <div className="ai-skeleton-wrapper">
-                        <div className="ai-skeleton-line" style={{ width: '90%' }}></div>
-                        <div className="ai-skeleton-line" style={{ width: '75%' }}></div>
-                        <div className="ai-skeleton-line" style={{ width: '85%' }}></div>
-                    </div>
-                ) : aiPendingResult ? (
-                    <div className="ai-pending-result" onClick={(e) => e.stopPropagation()}>
-                        <div className="ai-pending-text">{aiPendingResult}</div>
-                        {!onAIApply && <div className="ai-pending-hint">{t("ai_result_truncated")}</div>}
-                        <div className="ai-pending-actions">
-                            {onAIApply && (
-                                <button type="button" className="ai-pending-btn is-primary" onClick={() => onAIApply()}>
-                                    {t("ai_apply_result")}
-                                </button>
-                            )}
-                            <button type="button" className="ai-pending-btn" onClick={() => onAIDiscard?.()}>
-                                {t("ai_discard_result")}
-                            </button>
-                        </div>
-                    </div>
-                ) : aiQuestion ? (
-                    <div className="ai-input-wrapper">
-                        <input
-                            autoFocus
-                            className="search-input"
-                            style={{ width: '100%', fontSize: 'var(--font-size-sm)', padding: '8px', border: '1px solid var(--accent-color)' }}
-                            placeholder={aiQuestion}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    const val = e.currentTarget.value.trim();
-                                    if (onInputSubmit) {
-                                        onInputSubmit(val);
-                                    }
-                                }
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                        <div style={{ fontSize: 'var(--font-size-2xs)', opacity: 0.6, marginTop: '4px' }}>
-                            {t("ai_supplement_hint")}
-                        </div>
-                    </div>
                 ) : item.content_type === "rich_text" && item.html_content && !isSensitiveHidden ? (
                     richTextPreviewSrc ? (
                         <div className="rich-text-snapshot-viewport">
@@ -2904,58 +2172,7 @@ const ClipboardItem = ({
                         : item.preview
                 )}
                 </div>
-                {overlayMetaInPreview && renderMetaFooter()}
             </div>
-
-            {showFlowMetaFooter && renderMetaFooter()}
-
-            {compactMode && !!item.note && !isEditingNote && (
-                <button
-                    type="button"
-                    className="compact-note-indicator"
-                    title={item.note}
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleNoteEditor(e);
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                >
-                    <StickyNote size={10} />
-                </button>
-            )}
-
-            {compactMode && isEditingNote && renderNoteBlock()}
-
-            {/* AI Options - Compact Mode: Dropdown Panel, Normal Mode: Inline */}
-            <AnimatePresence>
-                {showAIOptions && (
-                    <motion.div
-                        className={compactMode ? "ai-options-dropdown" : "ai-options-inline"}
-                        initial={compactMode ? { opacity: 0, y: -10 } : "collapsed"}
-                        animate={compactMode ? { opacity: 1, y: 0 } : "open"}
-                        exit={compactMode ? { opacity: 0, y: -10 } : "collapsed"}
-                        variants={compactMode ? undefined : inlineAiVariants}
-                        transition={compactMode ? { duration: 0.16 } : { duration: 0.18 }}
-                    >
-                        <div className={`ai-actions-group ${compactMode ? 'compact' : ''}`}>
-                            {['task', 'mouthpiece', 'translate'].map(actionType => (
-                                <button
-                                    key={actionType}
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onAIAction?.(actionType);
-                                        onAIOptionsToggle?.();
-                                    }}
-                                    className="ai-action-btn"
-                                >
-                                    {t(`ai_${actionType}`)}
-                                </button>
-                            ))}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
 
         </motion.div >
     );
@@ -2987,25 +2204,13 @@ export default memo(ClipboardItem, (prevProps, nextProps) => {
         prevProps.isSensitiveHidden === nextProps.isSensitiveHidden &&
         prevProps.isRevealed === nextProps.isRevealed &&
         prevProps.canReveal === nextProps.canReveal &&
-        prevProps.isEditingTags === nextProps.isEditingTags &&
-        prevProps.isEditingNote === nextProps.isEditingNote &&
-        prevProps.noteDraft === nextProps.noteDraft &&
-        prevProps.isAIProcessing === nextProps.isAIProcessing &&
-        prevProps.aiQuestion === nextProps.aiQuestion &&
-        prevProps.aiPendingResult === nextProps.aiPendingResult &&
-        prevProps.aiOptionsOpen === nextProps.aiOptionsOpen &&
-        prevProps.aiEnabled === nextProps.aiEnabled &&
         prevProps.richTextSnapshotPreview === nextProps.richTextSnapshotPreview &&
         prevProps.showSourceAppIcon === nextProps.showSourceAppIcon &&
         prevProps.sensitiveMaskPrefixVisible === nextProps.sensitiveMaskPrefixVisible &&
         prevProps.sensitiveMaskSuffixVisible === nextProps.sensitiveMaskSuffixVisible &&
         prevProps.sensitiveMaskEmailDomain === nextProps.sensitiveMaskEmailDomain &&
-        prevProps.tagColors === nextProps.tagColors &&
         prevProps.quickPasteHint?.slot === nextProps.quickPasteHint?.slot &&
         prevProps.quickPasteHint?.combo === nextProps.quickPasteHint?.combo &&
         prevProps.compactMode === nextProps.compactMode &&
-        prevProps.theme === nextProps.theme &&
-        prevProps.language === nextProps.language &&
-        prevProps.tagInput === nextProps.tagInput &&
-        (prevProps.tagSuggestions ?? []).join('\u0000') === (nextProps.tagSuggestions ?? []).join('\u0000');
+        prevProps.theme === nextProps.theme;
 });

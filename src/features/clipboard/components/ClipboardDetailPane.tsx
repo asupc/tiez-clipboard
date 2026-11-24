@@ -1,7 +1,5 @@
 import {
   memo,
-  lazy,
-  Suspense,
   useEffect,
   useId,
   useLayoutEffect,
@@ -15,17 +13,10 @@ import {
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   ClipboardPaste,
-  ExternalLink,
   Eye,
   EyeOff,
-  Loader2,
   MoreHorizontal,
   PictureInPicture2,
-  Pin,
-  PinOff,
-  Sparkles,
-  StickyNote,
-  Tag,
   Trash2,
   ImageOff,
 } from "lucide-react";
@@ -36,25 +27,9 @@ import { getSourceAppIcon, peekSourceAppIcon } from "../../../shared/lib/sourceA
 import { isTauriRuntime } from "../../../shared/lib/tauriRuntime";
 import { openPinStickerWindow } from "../lib/pinStickerControls";
 import TextFilePreview, { isTextPreviewable } from "./TextFilePreview";
-import DetailAnnotationEditor from "./DetailAnnotationEditor";
-import type { AiDetail } from "../../../shared/hooks/useAiActions";
-
-const DetailAIResult = lazy(() => import("./DetailAIResult"));
 
 export interface DetailPaneActions {
   paste: (item: ClipboardEntry) => void;
-  togglePin: (event: MouseEvent, item: ClipboardEntry) => void;
-  setTagEditor: (item: ClipboardEntry, open: boolean) => void;
-  setNoteEditor: (item: ClipboardEntry, open: boolean) => void;
-  saveNote: (item: ClipboardEntry, note: string) => void;
-  addTag: (item: ClipboardEntry, tag: string) => void;
-  deleteTag: (item: ClipboardEntry, tag: string) => void;
-  runAI: (item: ClipboardEntry, actionType: string) => void;
-  supplementAI: (item: ClipboardEntry, input: string) => void;
-  applyAI: (item: ClipboardEntry) => void;
-  discardAI: (item: ClipboardEntry) => void;
-  copyAIText: (content: string) => void;
-  open: (item: ClipboardEntry) => void;
   toggleReveal: (item: ClipboardEntry) => void;
   remove: (event: MouseEvent, item: ClipboardEntry) => void;
 }
@@ -62,22 +37,11 @@ export interface DetailPaneActions {
 interface ClipboardDetailPaneProps {
   item: ClipboardEntry | null;
   t: (key: string) => string;
-  language: string;
   actions: DetailPaneActions;
   canReveal: boolean;
   isSensitiveHidden: boolean;
   isRevealed: boolean;
-  isEditingTags: boolean;
-  isEditingNote: boolean;
-  aiEnabled: boolean;
-  isAIProcessing: boolean;
-  aiDetail?: AiDetail;
   showSourceAppIcon: boolean;
-  tagInput: string;
-  tagSuggestions: string[];
-  onTagInput: (value: string) => void;
-  noteDraft?: string;
-  onNoteDraftChange: (value: string) => void;
 }
 
 // The list receives at most ~2000 characters per entry; the pane fetches the
@@ -86,12 +50,12 @@ const LIST_CONTENT_LIMIT = 1990;
 const MAX_DISPLAY_CHARS = 100_000;
 /** Files listed in the detail pane; the rest are summarised. */
 const MAX_LISTED_FILES = 200;
-// Keyed by id but checked against the list copy, which changes when an AI
-// action rewrites the entry in place.
+// Keyed by id but checked against the list copy, which changes when an
+// entry is rewritten in place.
 const fullContentCache = new Map<number, { source: string; text: string }>();
 
 const TEXT_TYPES = new Set(["text", "code", "url", "link"]);
-const AI_ACTION_TYPES = ["task", "mouthpiece", "translate"] as const;
+
 
 const typeLabelKey = (type: string) => {
   switch (type) {
@@ -106,8 +70,7 @@ const typeLabelKey = (type: string) => {
   }
 };
 
-const localeFor = (language: string) =>
-  language === "en" ? "en-US" : language === "tw" ? "zh-TW" : "zh-CN";
+const localeFor = () => "zh-CN";
 
 const mediaSrc = (item: ClipboardEntry) =>
   item.content.startsWith("data:")
@@ -161,7 +124,7 @@ const IconAction = ({ label, active, className, children, ...rest }: IconActionP
   </button>
 );
 
-type DetailActionBarProps = Omit<ClipboardDetailPaneProps, "item" | "language" | "isSensitiveHidden" | "showSourceAppIcon" | "tagInput" | "tagSuggestions" | "onTagInput" | "noteDraft" | "onNoteDraftChange"> & {
+type DetailActionBarProps = Omit<ClipboardDetailPaneProps, "item" | "isSensitiveHidden" | "showSourceAppIcon"> & {
   item: ClipboardEntry;
 };
 
@@ -170,32 +133,16 @@ const DetailActionBar = ({
   t,
   actions,
   canReveal,
-  isRevealed,
-  isEditingTags,
-  isEditingNote,
-  aiEnabled,
-  isAIProcessing
+  isRevealed
 }: DetailActionBarProps) => {
-  const [popover, setPopover] = useState<{ id: number; type: "ai" | "more" } | null>(null);
+  const [popover, setPopover] = useState<number | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const popoverId = useId();
-  // Pressing a pane button already closes an open editor before `click`
-  // (outside-click cancel for tags, blur-save for notes), so toggle on the
-  // state at press time. Keyboard activation has no press and reads it live.
-  const pressedRef = useRef<{ tags: boolean; note: boolean } | null>(null);
-  const wasOpen = (key: "tags" | "note", current: boolean) => {
-    const pressed = pressedRef.current;
-    pressedRef.current = null;
-    return pressed ? pressed[key] : current;
-  };
-
-  const supportsAI = aiEnabled && (item.content_type === "text" || item.content_type === "rich_text");
   const closeAndRun = (action: () => void) => {
     setPopover(null);
     action();
   };
-  const openType = popover?.id === item.id ? popover.type : null;
-  const aiOpen = supportsAI && openType === "ai";
+  const moreOpen = popover === item.id;
 
   const toolbarActions: Array<IconActionProps & { id: string; icon: ReactNode }> = [
     ...(canReveal ? [{
@@ -205,44 +152,6 @@ const DetailActionBar = ({
       icon: isRevealed ? <EyeOff size={14} /> : <Eye size={14} />,
       onClick: () => closeAndRun(() => actions.toggleReveal(item))
     }] : []),
-    {
-      id: "pin",
-      label: item.is_pinned ? t("unpin") : t("pin"),
-      active: item.is_pinned,
-      "aria-pressed": item.is_pinned,
-      icon: item.is_pinned ? <PinOff size={14} /> : <Pin size={14} />,
-      onClick: (e) => closeAndRun(() => actions.togglePin(e, item))
-    },
-    {
-      id: "tags",
-      label: t("edit_tags"),
-      active: isEditingTags,
-      "aria-pressed": isEditingTags,
-      icon: <Tag size={14} />,
-      onClick: () => closeAndRun(() => actions.setTagEditor(item, !wasOpen("tags", isEditingTags)))
-    },
-    {
-      id: "note",
-      label: item.note ? t("edit_note") : t("add_note"),
-      active: isEditingNote,
-      "aria-pressed": isEditingNote,
-      icon: <StickyNote size={14} />,
-      onClick: () => closeAndRun(() => actions.setNoteEditor(item, !wasOpen("note", isEditingNote)))
-    },
-    ...(supportsAI ? [{
-      id: "ai",
-      label: t("ai_assistant"),
-      active: aiOpen || isAIProcessing,
-      disabled: isAIProcessing,
-      icon: isAIProcessing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />,
-      onClick: () => setPopover(aiOpen ? null : { id: item.id, type: "ai" })
-    }] : []),
-    {
-      id: "open",
-      label: t("open"),
-      icon: <ExternalLink size={14} />,
-      onClick: () => closeAndRun(() => actions.open(item))
-    },
     // A sticker floats on top unblurred: only once the image is revealed.
     ...(item.content_type === "image" && !(canReveal && !isRevealed) ? [{
       id: "sticker",
@@ -288,16 +197,13 @@ const DetailActionBar = ({
 
   const visibleActions = toolbarActions.slice(0, visibleCount);
   const overflowActions = toolbarActions.slice(visibleCount);
-  const aiVisible = visibleActions.some((action) => action.id === "ai");
-  const moreOpen = overflowActions.length > 0 && openType === "more";
-  const aiInMore = aiOpen && !aiVisible;
 
   useEffect(() => {
-    if (openType === "more" && overflowActions.length === 0) setPopover(null);
-  }, [openType, overflowActions.length]);
+    if (moreOpen && overflowActions.length === 0) setPopover(null);
+  }, [moreOpen, overflowActions.length]);
 
   useEffect(() => {
-    if (!openType) return;
+    if (!moreOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!toolbarRef.current?.contains(event.target as Node)) setPopover(null);
     };
@@ -306,8 +212,7 @@ const DetailActionBar = ({
       event.preventDefault();
       event.stopPropagation();
       setPopover(null);
-      const trigger = openType === "ai" && !aiVisible ? "more" : openType;
-      toolbarRef.current?.querySelector<HTMLButtonElement>(`[data-detail-popup="${trigger}"]`)?.focus();
+      toolbarRef.current?.querySelector<HTMLButtonElement>(`[data-detail-popup="more"]`)?.focus();
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown, true);
@@ -315,18 +220,7 @@ const DetailActionBar = ({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [openType, aiVisible]);
-
-  const aiMenu = aiOpen && (
-    <div id={`${popoverId}-ai`} className="detail-action-popover" role="group" aria-label={t("ai_assistant")}>
-      {AI_ACTION_TYPES.map((type) => (
-        <button key={type} type="button" onClick={() => closeAndRun(() => actions.runAI(item, type))}>
-          <Sparkles size={14} />
-          <span>{t(`ai_${type}`)}</span>
-        </button>
-      ))}
-    </div>
-  );
+  }, [moreOpen]);
 
   return (
     <div className="detail-actions-wrap" ref={toolbarRef}>
@@ -334,34 +228,19 @@ const DetailActionBar = ({
         className="detail-actions"
         role="toolbar"
         aria-label={t("detail_actions")}
-        onPointerDownCapture={() => {
-          pressedRef.current = { tags: isEditingTags, note: isEditingNote };
-        }}
       >
-        {visibleActions.map(({ id, icon, ...props }) => id === "ai" ? (
-          <div key={id} className="detail-action-disclosure">
-            <IconAction
-              {...props}
-              aria-expanded={aiOpen}
-              aria-controls={aiOpen ? `${popoverId}-ai` : undefined}
-              data-detail-popup="ai"
-            >
-              {icon}
-            </IconAction>
-            {aiMenu}
-          </div>
-        ) : (
+        {visibleActions.map(({ id, icon, ...props }) => (
           <IconAction key={id} {...props}>{icon}</IconAction>
         ))}
         {overflowActions.length > 0 && (
           <div className="detail-action-disclosure">
             <IconAction
               label={t("more_actions")}
-              active={moreOpen || aiInMore}
-              aria-expanded={moreOpen || aiInMore}
-              aria-controls={moreOpen ? `${popoverId}-more` : aiInMore ? `${popoverId}-ai` : undefined}
+              active={moreOpen}
+              aria-expanded={moreOpen}
+              aria-controls={moreOpen ? `${popoverId}-more` : undefined}
               data-detail-popup="more"
-              onClick={() => setPopover(moreOpen || aiInMore ? null : { id: item.id, type: "more" })}
+              onClick={() => setPopover(moreOpen ? null : item.id)}
             >
               <MoreHorizontal size={16} />
             </IconAction>
@@ -374,7 +253,6 @@ const DetailActionBar = ({
                 ))}
               </div>
             )}
-            {aiInMore && aiMenu}
           </div>
         )}
         <button type="button" className="btn-icon detail-action is-primary" onClick={() => closeAndRun(() => actions.paste(item))}>
@@ -389,26 +267,15 @@ const DetailActionBar = ({
 const ClipboardDetailPane = ({
   item,
   t,
-  language,
   actions,
   canReveal,
   isSensitiveHidden,
   isRevealed,
-  isEditingTags,
-  isEditingNote,
-  aiEnabled,
-  isAIProcessing,
-  aiDetail,
-  showSourceAppIcon,
-  tagInput,
-  tagSuggestions,
-  onTagInput,
-  noteDraft,
-  onNoteDraftChange
+  showSourceAppIcon
 }: ClipboardDetailPaneProps) => {
-  const originalItem = useMemo(() => item && aiDetail ? { ...item, ...aiDetail.original } : item, [item, aiDetail]);
-  const fetchedText = useFullContent(originalItem, !isSensitiveHidden && !aiDetail);
-  const text = aiDetail?.original.content ?? fetchedText;
+  const originalItem = item;
+  const fetchedText = useFullContent(originalItem, !isSensitiveHidden);
+  const text = fetchedText;
   const [imageSize, setImageSize] = useState<{ id: number; w: number; h: number } | null>(null);
   const [imageFailedId, setImageFailedId] = useState<number | null>(null);
   const [appIcon, setAppIcon] = useState<string | null>(null);
@@ -447,7 +314,7 @@ const ClipboardDetailPane = ({
     return <div className="detail-empty">{t("detail_empty")}</div>;
   }
 
-  const locale = localeFor(language);
+  const locale = localeFor();
   const originalType = originalItem?.content_type ?? item.content_type;
   const formatTime = (ms?: number) => (ms
     ? new Date(ms).toLocaleString(locale, {
@@ -527,7 +394,7 @@ const ClipboardDetailPane = ({
           </li>
         )}
       </ul>
-      <TextFilePreview path={previewPath} language={language} />
+      <TextFilePreview path={previewPath} />
       </>
     );
   } else if (originalItem?.content_type === "rich_text" && originalItem.html_content) {
@@ -573,48 +440,7 @@ const ClipboardDetailPane = ({
       </div>
       {/* Keyed by id so switching entries resets scroll. */}
       <div className="detail-preview" key={`preview-${item.id}`}>
-        {aiDetail && !isSensitiveHidden && (
-          <div className="detail-ai-heading">
-            <h3>{t("ai_original")}</h3>
-            <button type="button" className="detail-ai-copy" onClick={() => actions.copyAIText(text)}>{t("ai_copy_original")}</button>
-          </div>
-        )}
         {preview}
-        {aiDetail && !isSensitiveHidden && (
-          <Suspense fallback={<p className="detail-ai-hint">{t("ai_processing")}</p>}>
-            <DetailAIResult key={`ai-${item.id}`} detail={aiDetail} t={t} onCopy={actions.copyAIText}
-              onSupplement={(input) => actions.supplementAI(item, input)}
-              onApply={() => actions.applyAI(item)} onDiscard={() => actions.discardAI(item)} />
-          </Suspense>
-        )}
-        {!!(item.tags?.length || item.note || isEditingTags || isEditingNote) && (
-          <section className="detail-annotations" aria-label={t("detail_information")}>
-            {!!item.tags?.length && !isEditingTags && (
-              <div className="detail-tags" aria-label={t("detail_tags")}>
-                {item.tags.map((tag) => <span className="detail-tag" key={tag}>#{tag}</span>)}
-              </div>
-            )}
-            {item.note && !isEditingNote && (
-              <div className="detail-note" aria-label={t("detail_note")}>
-                <StickyNote size={13} aria-hidden="true" />
-                <p>{item.note}</p>
-              </div>
-            )}
-            {(isEditingTags || isEditingNote) && (
-              <DetailAnnotationEditor
-                item={item}
-                t={t}
-                actions={actions}
-                isEditingTags={isEditingTags}
-                tagInput={tagInput}
-                tagSuggestions={tagSuggestions}
-                onTagInput={onTagInput}
-                noteDraft={noteDraft}
-                onNoteDraftChange={onNoteDraftChange}
-              />
-            )}
-          </section>
-        )}
       </div>
       <DetailActionBar
         key={`actions-${item.id}`}
@@ -623,10 +449,6 @@ const ClipboardDetailPane = ({
         actions={actions}
         canReveal={canReveal}
         isRevealed={isRevealed}
-        isEditingTags={isEditingTags}
-        isEditingNote={isEditingNote}
-        aiEnabled={aiEnabled}
-        isAIProcessing={isAIProcessing}
       />
     </>
   );

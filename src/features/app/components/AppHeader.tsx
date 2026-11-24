@@ -1,22 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent, RefObject } from "react";
+import type { MouseEvent, RefObject } from "react";
 import {
   ArrowUpDown,
   Check,
   ChevronLeft,
-  MessageSquare,
   Pin,
   PinOff,
   Search,
   Settings as SettingsIcon,
   Smile,
-  Tag,
   Trash2,
   X
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getTagColor } from "../../../shared/lib/utils";
 import { isMacPlatform } from "../../../shared/lib/platform";
 import { TYPE_FILTERS } from "../../../shared/lib/typeFilters";
 import type { ClipboardSortMode } from "../types";
@@ -25,14 +22,9 @@ interface AppHeaderProps {
   t: (key: string) => string;
   showSettings: boolean;
   setShowSettings: (val: boolean) => void;
-  showTagManager: boolean;
-  setShowTagManager: (val: boolean) => void;
-  tagManagerEnabled: boolean;
   showEmojiPanel: boolean;
   setShowEmojiPanel: (val: boolean) => void;
   emojiPanelEnabled: boolean;
-  chatMode: boolean;
-  fileServerEnabled: boolean;
   isWindowPinned: boolean;
   setIsWindowPinned: (val: boolean) => void;
   clearHistory: () => void;
@@ -41,13 +33,7 @@ interface AppHeaderProps {
   setSearch: (val: string) => void;
   setIsComposing: (val: boolean) => void;
   searchInputRef: RefObject<HTMLInputElement | null>;
-  showTagFilter: boolean;
-  setShowTagFilter: (val: boolean) => void;
-  allTags: string[];
-  tagColors: Record<string, string>;
-  searchIsFocused: boolean;
   setSearchIsFocused: (val: boolean) => void;
-  setEditingTagsId: (val: number | null) => void;
   theme: string;
   colorMode: string;
   settingsTitle: string;
@@ -56,21 +42,15 @@ interface AppHeaderProps {
   clipboardSortMode: ClipboardSortMode;
   onClipboardSortModeChange: (val: ClipboardSortMode) => void;
   onBack: () => void;
-  onToggleChat: () => void;
 }
 
 const AppHeader = ({
   t,
   showSettings,
   setShowSettings,
-  showTagManager,
-  setShowTagManager,
-  tagManagerEnabled,
   showEmojiPanel,
   setShowEmojiPanel,
   emojiPanelEnabled,
-  chatMode,
-  fileServerEnabled,
   isWindowPinned,
   setIsWindowPinned,
   clearHistory,
@@ -79,13 +59,7 @@ const AppHeader = ({
   setSearch,
   setIsComposing,
   searchInputRef,
-  showTagFilter,
-  setShowTagFilter,
-  allTags,
-  tagColors,
-  searchIsFocused,
   setSearchIsFocused,
-  setEditingTagsId,
   theme,
   colorMode,
   settingsTitle,
@@ -93,8 +67,7 @@ const AppHeader = ({
   setTypeFilter,
   clipboardSortMode,
   onClipboardSortModeChange,
-  onBack,
-  onToggleChat
+  onBack
 }: AppHeaderProps) => {
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement | null>(null);
@@ -164,11 +137,9 @@ const AppHeader = ({
 
   const headerTitle = showEmojiPanel
     ? t('emoji_panel')
-    : showTagManager && tagManagerEnabled
-      ? t('tag_manager')
-      : showSettings
-        ? (chatMode ? t('file_transfer') : settingsTitle)
-        : t('app_name');
+    : showSettings
+      ? settingsTitle
+      : t('app_name');
 
   const hideWindow = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -206,12 +177,12 @@ const AppHeader = ({
               <span className="traffic-light-space" />
             </div>
           )}
-          {(showSettings || showTagManager || showEmojiPanel) && (
+          {(showSettings || showEmojiPanel) && (
             <button className="btn-icon header-back-btn" onClick={onBack} aria-label={t("back")} title={t("back")}>
               <ChevronLeft size={16} />
             </button>
           )}
-          {showSettings || showTagManager || showEmojiPanel ? (
+          {showSettings || showEmojiPanel ? (
             <span className="header-title page-header-title is-page-title">{headerTitle}</span>
           ) : (
             <span className="brand-mark" role="img" aria-label={t("app_name")} />
@@ -238,16 +209,11 @@ const AppHeader = ({
             {isWindowPinned ? <PinOff size={16} /> : <Pin size={16} />}
           </button>
 
-          {!showSettings && !showTagManager && !showEmojiPanel && (
+          {!showSettings && !showEmojiPanel && (
             <>
               <button className="btn-icon" title={t('clear_history')} aria-label={t('clear_history')} onClick={clearHistory}>
                 <Trash2 size={16} />
               </button>
-              {tagManagerEnabled && (
-                <button className="btn-icon" title={t('tag_manager')} aria-label={t('tag_manager')} onClick={() => setShowTagManager(true)}>
-                  <Tag size={16} />
-                </button>
-              )}
               {emojiPanelEnabled && (
                 <button className="btn-icon" title={t('emoji_panel')} aria-label={t('emoji_panel')} onClick={() => setShowEmojiPanel(true)}>
                   <Smile size={16} />
@@ -258,17 +224,6 @@ const AppHeader = ({
               </button>
             </>
           )}
-          {fileServerEnabled && (
-            <button
-              className={`btn-icon header-chat-btn ${chatMode && showSettings ? 'active' : ''}`}
-              title={t('file_transfer')}
-              aria-label={t('file_transfer')}
-              onClick={onToggleChat}
-            >
-              <MessageSquare size={16} />
-            </button>
-          )}
-
           {!isMac && (
             <button
               className="btn-icon windows-close-btn"
@@ -282,7 +237,7 @@ const AppHeader = ({
         </div>
       </div>
 
-      {!showSettings && !showTagManager && !showEmojiPanel && (
+      {!showSettings && !showEmojiPanel && (
         <div
           className={`search-reveal${searchVisible ? " is-open" : ""}`}
           aria-hidden={!searchVisible}
@@ -298,7 +253,7 @@ const AppHeader = ({
                     <input
                     ref={searchInputRef}
                     type="text"
-                    className={`search-input has-sort-control ${showTagFilter && searchIsFocused && search.trim().length === 0 && allTags.length > 0 ? 'dropdown-open' : ''}`}
+                    className="search-input has-sort-control"
                     placeholder={
                       theme === "terminal"
                         ? t("search_placeholder_terminal")
@@ -313,7 +268,6 @@ const AppHeader = ({
                     onChange={(e) => {
                       setSearch(e.target.value);
                     }}
-                    onClick={() => { setShowTagFilter(true); setEditingTagsId(null); }}
                     onFocus={() => {
                       // Do not re-invoke activate here: a second focus bounce can
                       // blur the caret right after the user clicks the field.
@@ -322,11 +276,9 @@ const AppHeader = ({
                       // focuses the field too, and the list then covered the
                       // type filters like an empty record (#170, #135).
                       setSearchIsFocused(true);
-                      setEditingTagsId(null);
                     }}
                     onBlur={() => {
                       setTimeout(() => {
-                        setShowTagFilter(false);
                         setSearchIsFocused(false);
                       }, 200);
                     }}
@@ -341,7 +293,6 @@ const AppHeader = ({
                         aria-expanded={sortMenuOpen}
                         title={`${t("clipboard_sort")}: ${activeSortLabel}`}
                         onClick={() => {
-                          setShowTagFilter(false);
                           setSortMenuOpen((open) => !open);
                         }}
                       >
@@ -377,42 +328,6 @@ const AppHeader = ({
                       )}
                     </div>
                   </div>
-                  {showTagFilter && searchIsFocused && search.trim().length === 0 && allTags.length > 0 && (
-                    <div className="tags-dropdown">
-                      <div className="tags-list">
-                        {allTags.map(tag => {
-                          const tagColor = tagColors[tag] || getTagColor(tag, theme);
-                          return (
-                            <button
-                              type="button"
-                              className="tag-chip tag-filter-chip"
-                              key={tag}
-                              // Keep the search box focused so the list stays open
-                              // until the click. Acting on mouse-down closed the list
-                              // under the pointer, and the release then landed on
-                              // (and pasted) the record beneath it.
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => {
-                                setSearch("tag:" + tag);
-                                setShowTagFilter(false);
-                              }}
-                              data-tag={tag}
-                              style={{
-                                '--tag-color': tagColor,
-                              } as CSSProperties}
-                            >
-                              <span
-                                className="tag-color-dot"
-                                style={{ backgroundColor: tagColor }}
-                                aria-hidden="true"
-                              />
-                              <span className="tag-name">{tag}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
                 <div
                   ref={typeFiltersRef}

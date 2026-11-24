@@ -1,11 +1,9 @@
 import { useCallback } from "react";
 import { failureText } from "../lib/errorMessage";
 import { invoke } from "@tauri-apps/api/core";
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ClipboardEntry } from "../types";
-import type { VirtualClipboardListHandle } from "../../features/clipboard/types";
-import { reconcileHistoryTags } from "../lib/historyState";
 
 interface UseClipboardActionsOptions {
   t: (key: string) => string;
@@ -17,7 +15,6 @@ interface UseClipboardActionsOptions {
   isWindowPinned: boolean;
   setSearch: (val: string) => void;
   setHistory: Dispatch<SetStateAction<ClipboardEntry[]>>;
-  virtualListRef: RefObject<VirtualClipboardListHandle | null>;
 }
 
 // Files and media are read by id on the backend; sending their content is waste.
@@ -34,8 +31,7 @@ export const useClipboardActions = ({
   clickCopyOnly,
   isWindowPinned,
   setSearch,
-  setHistory,
-  virtualListRef
+  setHistory
 }: UseClipboardActionsOptions) => {
   const copyToClipboard = useCallback(
     async (
@@ -129,24 +125,6 @@ export const useClipboardActions = ({
     [pushToast, t]
   );
 
-  const openContent = useCallback(
-    async (item: ClipboardEntry) => {
-      try {
-        await invoke("open_content", {
-          id: item.id,
-          content: item.content,
-          contentType: item.content_type
-        });
-      } catch (err) {
-        const errorMsg = String(err).includes("file_missing")
-          ? t("open_file_missing")
-          : failureText(t("open_failed"), err);
-        pushToast(errorMsg, 3000);
-      }
-    },
-    [pushToast, t]
-  );
-
   const deleteEntryById = useCallback(
     async (id: number): Promise<boolean> => {
       try {
@@ -170,85 +148,10 @@ export const useClipboardActions = ({
     [deleteEntryById]
   );
 
-  const togglePin = useCallback(
-    async (e: ReactMouseEvent, id: number, currentPinned: boolean) => {
-      e.stopPropagation();
-      try {
-        await invoke("toggle_clipboard_pin", { id, isPinned: !currentPinned });
-        const now = Date.now();
-        setHistory((prev) =>
-          prev
-            .map((item) =>
-              item.id === id
-                ? { ...item, is_pinned: !currentPinned, timestamp: now, sort_at: now }
-                : item
-            )
-            .sort((a, b) => {
-              if (a.is_pinned === b.is_pinned) {
-                return (b.sort_at || b.timestamp) - (a.sort_at || a.timestamp);
-              }
-              return a.is_pinned ? -1 : 1;
-            })
-        );
-      } catch (err) {
-        const errorMsg =
-          failureText(currentPinned ? t("unpin_failed") : t("pin_failed"), err);
-        pushToast(errorMsg, 3000);
-      }
-    },
-    [pushToast, setHistory, t]
-  );
-
-  const handleUpdateTags = useCallback(
-    async (id: number, newTags: string[]) => {
-      try {
-        const newId = await invoke<number>("update_tags", { id, tags: newTags });
-        setHistory((prev) =>
-          reconcileHistoryTags(prev, id, newId, newTags)
-        );
-
-        setTimeout(() => {
-          if (virtualListRef.current) {
-            virtualListRef.current.resetAfterIndex(0);
-          }
-        }, 0);
-      } catch (err) {
-        console.error("更新标签失败", err);
-        pushToast(failureText(t("save_tags_failed"), err), 4000);
-      }
-    },
-    [pushToast, setHistory, t, virtualListRef]
-  );
-
-  const handleUpdateNote = useCallback(
-    async (id: number, note: string) => {
-      const cleaned = note.trim();
-      try {
-        await invoke("update_entry_note", { id, note: cleaned });
-        setHistory((prev) =>
-          prev.map((item) => (item.id === id ? { ...item, note: cleaned } : item))
-        );
-        setTimeout(() => {
-          if (virtualListRef.current) {
-            virtualListRef.current.resetAfterIndex(0);
-          }
-        }, 0);
-      } catch (err) {
-        console.error("更新备注失败", err);
-        pushToast(failureText(t("save_note_failed"), err), 4000);
-      }
-    },
-    [pushToast, setHistory, t, virtualListRef]
-  );
-
   return {
     copyToClipboard,
     copyWithoutPaste,
-    openContent,
     deleteEntry,
-    deleteEntryById,
-    togglePin,
-    handleUpdateTags,
-    handleUpdateNote
+    deleteEntryById
   };
 };

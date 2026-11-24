@@ -3,8 +3,6 @@ import { isListCovered, type ListCover } from "./listKeys";
 
 const uncovered: ListCover = {
   showSettings: false,
-  showTagManager: false,
-  chatMode: false,
   showEmojiPanel: false,
   editingInline: false,
   dialogOpen: false,

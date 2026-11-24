@@ -16,20 +16,13 @@ import {
     Clock
 } from "lucide-react";
 import HtmlContent from "../../../shared/components/HtmlContent";
-import {
-    applyNativePalette,
-    applyThemeClasses,
-    DEFAULT_THEME,
-    normalizeThemeId
-} from "../../../shared/config/themes";
+import { applyNativePalette, applyThemeClasses } from "../../../shared/config/themes";
 import { getConciseTime } from "../../../shared/lib/utils";
 import { getSourceAppIcon, peekSourceAppIcon } from "../../../shared/lib/sourceAppIcon";
-import type { Locale } from "../../../shared/types";
 import { translations } from "../../../locales";
 import { toTauriLocalImageSrc } from "../../../shared/lib/localImageSrc";
 import { stripRichStorageMarkers } from "../../../shared/lib/repairHtmlFragment";
 import { getRichTextSnapshotDataUrl } from "../../../shared/lib/richTextSnapshot";
-import { ensureInstalledThemeStyle } from "../../../shared/lib/themePackages";
 import { preferRichImageFallback } from "../lib/richPreview";
 
 const TYPE_LABEL_KEYS: Record<string, string> = {
@@ -37,10 +30,9 @@ const TYPE_LABEL_KEYS: Record<string, string> = {
     image: "type_image", video: "type_video", rich_text: "type_rich_text"
 };
 
-/** The content type in the user's language; it showed the raw id ("rich_text"). */
-const typeLabel = (type: string, language: Locale = "zh") => {
+const typeLabel = (type: string) => {
     const key = (TYPE_LABEL_KEYS[type] ?? "type_text") as keyof typeof translations["zh"];
-    return translations[language]?.[key] || translations.zh[key];
+    return translations.zh[key];
 };
 
 type PreviewPayload = {
@@ -54,13 +46,11 @@ type PreviewPayload = {
     sourceAppPath?: string;
     sourceAppIcon?: string | null;
     timestamp?: number;
-    language?: Locale;
     theme?: string;
     colorMode?: "light" | "dark";
     nativePalette?: string;
     richTextSnapshotPreview?: boolean;
     clipboardItemFontSize?: number;
-    clipboardTagFontSize?: number;
     maxWidth: number;
     maxHeight: number;
     mediaMaxWidth: number;
@@ -158,16 +148,13 @@ const seekVideoPreviewFrame = (video: HTMLVideoElement | null) => {
 };
 
 const applyTheme = async (payload: PreviewPayload) => {
-    const theme = normalizeThemeId(payload.theme || DEFAULT_THEME);
     const colorMode = payload.colorMode || "light";
 
     const root = document.documentElement;
     const body = document.body;
 
-    const installedThemeReady = await ensureInstalledThemeStyle(theme);
-    const effectiveTheme = installedThemeReady ? theme : DEFAULT_THEME;
-    applyThemeClasses(effectiveTheme, root, body);
-    applyNativePalette(payload.theme || effectiveTheme, payload.nativePalette, root, body);
+    applyThemeClasses(root, body);
+    applyNativePalette(payload.nativePalette, root, body);
 
     root.classList.remove("light-mode", "dark-mode");
     body.classList.remove("light-mode", "dark-mode");
@@ -184,15 +171,11 @@ const applyTheme = async (payload: PreviewPayload) => {
     if (payload.clipboardItemFontSize) {
         root.style.setProperty("--clipboard-item-font-size", `${payload.clipboardItemFontSize}px`);
     }
-    if (payload.clipboardTagFontSize) {
-        root.style.setProperty("--clipboard-tag-font-size", `${payload.clipboardTagFontSize}px`);
-    }
 
     compactPreviewLog("theme applied", {
-        theme,
+        theme: "mica",
         colorMode,
         itemFontSize: payload.clipboardItemFontSize,
-        tagFontSize: payload.clipboardTagFontSize
     });
 };
 
@@ -925,7 +908,7 @@ const calculateStandardCardDimensions = (
         <div className="compact-preview-root">
             <motion.div
                 ref={containerRef}
-                className={`compact-popover-portal compact-preview-window theme-${normalizeThemeId(payload?.theme || DEFAULT_THEME)} ${payload?.contentType === "image" ? "compact-preview-image" : ""} ${payload?.contentType === "image" || payload?.contentType === "video" || !!effectiveRichImageFallbackSrc || useSnapshotPreviewImage ? "compact-preview-media" : ""} ${payload?.colorMode === "dark" ? "dark-mode" : ""}`}
+                className={`compact-popover-portal compact-preview-window theme-mica ${payload?.contentType === "image" ? "compact-preview-image" : ""} ${payload?.contentType === "image" || payload?.contentType === "video" || !!effectiveRichImageFallbackSrc || useSnapshotPreviewImage ? "compact-preview-media" : ""} ${payload?.colorMode === "dark" ? "dark-mode" : ""}`}
                 initial={{ opacity: 0, scale: 0.95, y: 3 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{
@@ -943,7 +926,7 @@ const calculateStandardCardDimensions = (
                 <div ref={metaRef} className="popover-meta">
                     <div className="meta-row">
                         {getIcon(payload?.contentType || "text")}
-                        <span>{typeLabel(payload?.contentType || "text", payload?.language)}</span>
+                        <span>{typeLabel(payload?.contentType || "text")}</span>
                     </div>
                     <div className="meta-dot">•</div>
                     <div className="meta-row meta-row-source">
@@ -963,8 +946,8 @@ const calculateStandardCardDimensions = (
                     <div className="meta-row">
                         <Clock size={14} />
                         <span>
-                            {payload?.timestamp && payload?.language
-                                ? getConciseTime(payload.timestamp, payload.language)
+                            {payload?.timestamp
+                                ? getConciseTime(payload.timestamp)
                                 : "-"}
                         </span>
                     </div>

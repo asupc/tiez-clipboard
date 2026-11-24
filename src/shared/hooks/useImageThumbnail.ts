@@ -9,7 +9,7 @@ import { isTauriRuntime } from "../lib/tauriRuntime";
 // memory so a card scrolled back into view gets its src synchronously.
 const resolved = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
-const MAX_RESOLVED = 600;
+const MAX_RESOLVED = 200;
 
 const loadThumbnail = (path: string, key: string): Promise<string> => {
   let pending = inflight.get(key);

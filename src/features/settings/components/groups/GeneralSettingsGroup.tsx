@@ -1,8 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { isMacPlatform, isWindowsPlatform } from "../../../../shared/lib/platform";
-import MacAccessibilityPermission from "./MacAccessibilityPermission";
+import { isWindowsPlatform } from "../../../../shared/lib/platform";
 import { SettingRange, SettingSwitch } from "../SettingControls";
 
 interface LabelWithHintProps {
@@ -24,8 +23,6 @@ interface GeneralSettingsGroupProps {
     setSilentStart: (val: boolean) => void;
     hideTrayIcon: boolean;
     setHideTrayIcon: (val: boolean) => void;
-    hideDockIcon: boolean;
-    setHideDockIcon: (val: boolean) => void;
     edgeDocking: boolean;
     setEdgeDocking: (val: boolean) => void;
     followMouse: boolean;
@@ -41,8 +38,6 @@ interface GeneralSettingsGroupProps {
     setScrollTopButtonEnabled: (val: boolean) => void;
     emojiPanelEnabled: boolean;
     setEmojiPanelEnabled: (val: boolean) => void;
-    tagManagerEnabled: boolean;
-    setTagManagerEnabled: (val: boolean) => void;
     arrowKeySelection: boolean;
     setArrowKeySelection: (val: boolean) => void;
     lightModeEnabled: boolean;
@@ -87,8 +82,6 @@ const GeneralSettingsGroup = ({
     setSilentStart,
     hideTrayIcon,
     setHideTrayIcon,
-    hideDockIcon,
-    setHideDockIcon,
     edgeDocking,
     setEdgeDocking,
     followMouse,
@@ -104,8 +97,6 @@ const GeneralSettingsGroup = ({
     setScrollTopButtonEnabled,
     emojiPanelEnabled,
     setEmojiPanelEnabled,
-    tagManagerEnabled,
-    setTagManagerEnabled,
     arrowKeySelection,
     setArrowKeySelection,
     lightModeEnabled,
@@ -208,23 +199,6 @@ const GeneralSettingsGroup = ({
                     />
                 </div>
 
-                {isMacPlatform() && (
-                    <div className="setting-item">
-                        <LabelWithHint
-                            label={t('hide_dock_icon')}
-                            hint={t('hide_dock_icon_hint')}
-                            hintKey="hide_dock_icon"
-                        />
-                        <SettingSwitch
-                            checked={hideDockIcon}
-                            onChange={(e) => {
-                                const val = e.target.checked;
-                                applyToggle(val, setHideDockIcon, "set_dock_visible", { visible: !val });
-                            }}
-                        />
-                    </div>
-                )}
-
                 <div className="setting-item">
                     <LabelWithHint
                         label={t('edge_docking')}
@@ -254,10 +228,6 @@ const GeneralSettingsGroup = ({
                         }}
                     />
                 </div>
-
-                {isMacPlatform() && (
-                    <MacAccessibilityPermission t={t} LabelWithHint={LabelWithHint} />
-                )}
 
                 <h4 className="settings-section-title">{t('settings_section_sound')}</h4>
                 <div className="setting-item">
@@ -347,21 +317,6 @@ const GeneralSettingsGroup = ({
                             const enabled = e.target.checked;
                             setEmojiPanelEnabled(enabled);
                             saveAppSetting('emoji_panel_enabled', String(enabled));
-                        }}
-                    />
-                </div>
-                <div className="setting-item">
-                    <LabelWithHint
-                        label={t('tag_manager_enabled')}
-                        hint={t('tag_manager_enabled_hint')}
-                        hintKey="tag_manager_enabled"
-                    />
-                    <SettingSwitch
-                        checked={tagManagerEnabled}
-                        onChange={(e) => {
-                            const enabled = e.target.checked;
-                            setTagManagerEnabled(enabled);
-                            saveAppSetting('tag_manager_enabled', String(enabled));
                         }}
                     />
                 </div>

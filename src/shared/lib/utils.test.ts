@@ -157,19 +157,15 @@ describe("getConciseTime", () => {
     expect(getConciseTime(NaN, "zh")).toBe("");
   });
 
-  it("1分钟内或轻微时钟偏差返回'刚刚' / 'Just now' / '剛剛'", () => {
+  it("1分钟内或轻微时钟偏差返回'刚刚'", () => {
     const now = Date.now();
     expect(getConciseTime(now - 10_000, "zh")).toBe("刚刚");
-    expect(getConciseTime(now - 10_000, "en")).toBe("Just now");
-    expect(getConciseTime(now - 10_000, "tw")).toBe("剛剛");
     expect(getConciseTime(now + 5_000, "zh")).toBe("刚刚");
   });
 
   it("1小时内返回相对分钟", () => {
     const now = Date.now();
     expect(getConciseTime(now - 15 * 60 * 1000, "zh")).toBe("15分钟前");
-    expect(getConciseTime(now - 15 * 60 * 1000, "en")).toBe("15m ago");
-    expect(getConciseTime(now - 15 * 60 * 1000, "tw")).toBe("15分鐘前");
   });
 
   it("当天超过1小时显示具体时间 HH:mm", () => {
@@ -193,7 +189,6 @@ describe("getConciseTime", () => {
     yesterday.setDate(yesterday.getDate() - 1);
     yesterday.setHours(9, 15, 0, 0);
     expect(getConciseTime(yesterday.getTime(), "zh")).toBe("昨天 09:15");
-    expect(getConciseTime(yesterday.getTime(), "en")).toBe("Yesterday 09:15");
   });
 
   it("今年其他日期显示 MM-DD", () => {
@@ -210,7 +205,6 @@ describe("getConciseTime", () => {
     const pastYear = new Date();
     pastYear.setFullYear(2023, 4, 20); // 2023-05-20
     expect(getConciseTime(pastYear.getTime(), "zh")).toBe("2023-05-20");
-    expect(getConciseTime(pastYear.getTime(), "en")).toBe("2023-05-20");
   });
 
   it("支持以秒为单位的时间戳", () => {

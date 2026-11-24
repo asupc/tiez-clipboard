@@ -5,21 +5,17 @@
  */
 export interface ListCover {
   showSettings: boolean;
-  showTagManager: boolean;
-  chatMode: boolean;
   showEmojiPanel: boolean;
   /** A tag or note editor is open on an entry. */
   editingInline: boolean;
   /** A modal dialog (confirm, update) is open. */
   dialogOpen: boolean;
-  /** A text field other than the search box has focus (e.g. an AI follow-up). */
+  /** A text field other than the search box has focus. */
   textFieldFocused: boolean;
 }
 
 export const isListCovered = (cover: ListCover): boolean =>
   cover.showSettings ||
-  cover.showTagManager ||
-  cover.chatMode ||
   cover.showEmojiPanel ||
   cover.editingInline ||
   cover.dialogOpen ||

@@ -1,7 +1,7 @@
 /* Color palettes for the platform's native theme. Geometry, fonts,
    controls and custom-background layers all come from macos.css / mica.css. */
-:root:is(.theme-macos, .theme-mica):is(.native-palette-sakura, .native-palette-color),
-:root body:is(.theme-macos, .theme-mica):is(.native-palette-sakura, .native-palette-color) {
+:root:is(.theme-mica, .theme-mica):is(.native-palette-sakura, .native-palette-color),
+:root body:is(.theme-mica, .theme-mica):is(.native-palette-sakura, .native-palette-color) {
   color-scheme: light;
   --native-shell-border-width: 1px;
   --native-window: var(--native-palette-light-window, 255, 250, 252);
@@ -62,18 +62,18 @@
    a palette keeps it solid too. The see-through window above is Mica's.
    The html.platform-macos forms match macos.css's own window rules, which
    otherwise kept dark mode at plain #1e1e1e without the palette's tint. */
-:root.theme-macos:is(.native-palette-sakura, .native-palette-color),
-:root body.theme-macos:is(.native-palette-sakura, .native-palette-color),
-html.platform-macos.theme-macos:is(.native-palette-sakura, .native-palette-color),
-html.platform-macos body.theme-macos:is(.native-palette-sakura, .native-palette-color) {
+:root.theme-mica:is(.native-palette-sakura, .native-palette-color),
+:root body.theme-mica:is(.native-palette-sakura, .native-palette-color),
+html.platform-macos.theme-mica:is(.native-palette-sakura, .native-palette-color),
+html.platform-macos body.theme-mica:is(.native-palette-sakura, .native-palette-color) {
   --native-shell-border-width: 0.5px;
   --bg-window: rgb(var(--native-window));
   --shell-background: var(--bg-window);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:is(.theme-macos, .theme-mica):is(.native-palette-sakura, .native-palette-color):not(.light-mode),
-  :root body:is(.theme-macos, .theme-mica):is(.native-palette-sakura, .native-palette-color):not(.light-mode) {
+  :root:is(.theme-mica, .theme-mica):is(.native-palette-sakura, .native-palette-color):not(.light-mode),
+  :root body:is(.theme-mica, .theme-mica):is(.native-palette-sakura, .native-palette-color):not(.light-mode) {
     color-scheme: dark;
     --native-shell-border-width: 1px;
     --native-window: var(--native-palette-dark-window, 30, 22, 26);
@@ -92,8 +92,8 @@ html.platform-macos body.theme-macos:is(.native-palette-sakura, .native-palette-
   }
 }
 
-:root:is(.theme-macos, .theme-mica):is(.native-palette-sakura, .native-palette-color).dark-mode,
-:root body:is(.theme-macos, .theme-mica):is(.native-palette-sakura, .native-palette-color).dark-mode {
+:root:is(.theme-mica, .theme-mica):is(.native-palette-sakura, .native-palette-color).dark-mode,
+:root body:is(.theme-mica, .theme-mica):is(.native-palette-sakura, .native-palette-color).dark-mode {
   color-scheme: dark;
   --native-shell-border-width: 1px;
   --native-window: var(--native-palette-dark-window, 30, 22, 26);

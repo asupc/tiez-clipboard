@@ -12,7 +12,7 @@ const history: ClipboardEntry[] = Array.from({ length: 6 }, (_, index) => ({
   source_app: "Test",
   timestamp: index,
   preview: "record",
-  is_pinned: index < 4,
+  is_pinned: false,
 }));
 
 const scrollIntoView = vi.fn();
@@ -22,7 +22,6 @@ const options = {
   filteredHistory: history,
   selectedIndex: 0,
   isKeyboardMode: true,
-  pinnedCount: 4,
   virtualListRef: { current: scroller },
 };
 
@@ -34,24 +33,9 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-test.each([0, 1, 3])("keyboard selection reveals pinned record %i instead of jumping to the top", (selectedIndex) => {
+test.each([0, 1, 3, 5])("keyboard selection scrolls to record %i", (selectedIndex) => {
   useScrollToSelection({ ...options, selectedIndex });
-  expect(getElementById).toHaveBeenCalledWith(`clipboard-item-${history[selectedIndex].id}`);
-  expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "nearest" });
-  expect(scroller.scrollToTop).not.toHaveBeenCalled();
-  expect(scroller.scrollToItem).not.toHaveBeenCalled();
-});
-
-test("a missing pinned element falls back to the top of the virtual list", () => {
-  getElementById.mockReturnValue(null);
-  useScrollToSelection(options);
-  expect(scroller.scrollToTop).toHaveBeenCalledOnce();
-  expect(scroller.scrollToItem).not.toHaveBeenCalled();
-});
-
-test.each([4, 5])("normal record %i uses its index after the pinned section", (selectedIndex) => {
-  useScrollToSelection({ ...options, selectedIndex });
-  expect(scroller.scrollToItem).toHaveBeenCalledWith(selectedIndex - options.pinnedCount);
+  expect(scroller.scrollToItem).toHaveBeenCalledWith(selectedIndex);
   expect(getElementById).not.toHaveBeenCalled();
   expect(scroller.scrollToTop).not.toHaveBeenCalled();
 });

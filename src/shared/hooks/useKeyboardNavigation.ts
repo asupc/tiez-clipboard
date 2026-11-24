@@ -19,11 +19,7 @@ interface UseKeyboardNavigationOptions {
   isKeyboardMode: boolean;
   setIsKeyboardMode: (val: boolean | ((prev: boolean) => boolean)) => void;
   showSettings: boolean;
-  showTagManager: boolean;
   showEmojiPanel: boolean;
-  chatMode: boolean;
-  editingTagsId: number | null;
-  editingNoteId: number | null;
   arrowKeySelection: boolean;
   plainPasteHotkey: string;
   searchInputRef: RefObject<HTMLInputElement | null>;
@@ -62,11 +58,7 @@ export const useKeyboardNavigation = ({
   isKeyboardMode,
   setIsKeyboardMode,
   showSettings,
-  showTagManager,
   showEmojiPanel,
-  chatMode,
-  editingTagsId,
-  editingNoteId,
   arrowKeySelection,
   plainPasteHotkey,
   searchInputRef,
@@ -84,11 +76,7 @@ export const useKeyboardNavigation = ({
   const selectedItemSnapshotRef = useRef<ClipboardEntry | null>(null);
   const isKeyboardModeRef = useRef(isKeyboardMode);
   const showSettingsRef = useRef(showSettings);
-  const showTagManagerRef = useRef(showTagManager);
   const showEmojiPanelRef = useRef(showEmojiPanel);
-  const chatModeRef = useRef(chatMode);
-  const editingTagsIdRef = useRef(editingTagsId);
-  const editingNoteIdRef = useRef(editingNoteId);
   const arrowKeySelectionRef = useRef(arrowKeySelection);
   const copyToClipboardRef = useRef(copyToClipboard);
   const plainPasteHotkeyRef = useRef(plainPasteHotkey);
@@ -98,11 +86,7 @@ export const useKeyboardNavigation = ({
   filteredHistoryRef.current = filteredHistory;
   isKeyboardModeRef.current = isKeyboardMode;
   showSettingsRef.current = showSettings;
-  showTagManagerRef.current = showTagManager;
   showEmojiPanelRef.current = showEmojiPanel;
-  chatModeRef.current = chatMode;
-  editingTagsIdRef.current = editingTagsId;
-  editingNoteIdRef.current = editingNoteId;
   arrowKeySelectionRef.current = arrowKeySelection;
   copyToClipboardRef.current = copyToClipboard;
   plainPasteHotkeyRef.current = plainPasteHotkey;
@@ -130,10 +114,8 @@ export const useKeyboardNavigation = ({
   const listIsCovered = (textFieldFocused: boolean) =>
     isListCovered({
       showSettings: showSettingsRef.current,
-      showTagManager: showTagManagerRef.current,
-      chatMode: chatModeRef.current,
       showEmojiPanel: showEmojiPanelRef.current,
-      editingInline: editingTagsIdRef.current !== null || editingNoteIdRef.current !== null,
+      editingInline: false,
       dialogOpen: hasOpenModal(),
       textFieldFocused
     });
@@ -348,20 +330,14 @@ export const useKeyboardNavigation = ({
       // isComposing already false; only keyCode 229 still marks it.
       if (e.isComposing || e.key === "Process" || e.keyCode === 229) return;
 
-      if (
-        showSettingsRef.current ||
-        showTagManagerRef.current ||
-        chatModeRef.current ||
-        editingTagsIdRef.current !== null ||
-        editingNoteIdRef.current !== null
-      ) {
+      if (showSettingsRef.current) {
         return;
       }
 
       const target = e.target as HTMLElement;
       const tagName = target.tagName;
       // Only the search box itself: other fields share its look and class
-      // (e.g. the AI follow-up answer) but keep their keys.
+      // but keep their keys.
       const isSearchInput = target === searchInputRef.current;
       const isAnyInput = tagName === "INPUT" || tagName === "TEXTAREA";
       const isEditable = isAnyInput || target.isContentEditable === true;
