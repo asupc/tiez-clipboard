@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
@@ -9,41 +9,32 @@
       // Immediate theme application to prevent flash
       (function() {
         try {
-          var isMac = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent) || /Mac/i.test(navigator.platform);
-          var theme = localStorage.getItem('tiez_theme') || (isMac ? 'macos' : 'mica');
-          if (!isMac && theme === 'macos') theme = 'mica';
-          if (isMac && theme === 'mica') theme = 'macos';
-          var nativePalette = theme === 'sakura' ? 'sakura' : localStorage.getItem('tiez_native_palette');
-          if (theme === 'sakura') theme = isMac ? 'macos' : 'mica';
-          if (theme === 'macos' || theme === 'mica') {
-            document.documentElement.setAttribute('data-native-palette', nativePalette || 'default');
-            if (nativePalette === 'sakura') document.documentElement.classList.add('native-palette-sakura');
-            if (['mint', 'lavender', 'amber'].indexOf(nativePalette) !== -1 || /^custom:#[0-9a-f]{6}$/i.test(nativePalette || '')) {
-              document.documentElement.classList.add('native-palette-color');
-              var paletteCache = {};
-              try { paletteCache = JSON.parse(localStorage.getItem('tiez_native_palette_tokens') || '{}'); } catch (e) {}
-              if (paletteCache.palette === nativePalette && paletteCache.styles) {
-                Object.keys(paletteCache.styles).forEach(function(key) {
-                  if (/^--native-palette-(light|dark)-[a-z-]+$/.test(key)) {
-                    document.documentElement.style.setProperty(key, paletteCache.styles[key]);
-                  }
-                });
-              }
+          var nativePalette = localStorage.getItem('tiez_native_palette') || 'default';
+          document.documentElement.setAttribute('data-native-palette', nativePalette);
+          if (nativePalette === 'sakura') document.documentElement.classList.add('native-palette-sakura');
+          if (['mint', 'lavender', 'amber'].indexOf(nativePalette) !== -1 || /^custom:#[0-9a-f]{6}$/i.test(nativePalette)) {
+            document.documentElement.classList.add('native-palette-color');
+            var paletteCache = {};
+            try { paletteCache = JSON.parse(localStorage.getItem('tiez_native_palette_tokens') || '{}'); } catch (e) {}
+            if (paletteCache.palette === nativePalette && paletteCache.styles) {
+              Object.keys(paletteCache.styles).forEach(function(key) {
+                if (/^--native-palette-(light|dark)-[a-z-]+$/.test(key)) {
+                  document.documentElement.style.setProperty(key, paletteCache.styles[key]);
+                }
+              });
             }
           }
           var colorMode = localStorage.getItem('tiez_color_mode') || 'system';
           var compactMode = localStorage.getItem('tiez_compact_mode') === 'true';
 
-          document.documentElement.classList.add(isMac ? 'platform-macos' : 'platform-windows');
-          
+          document.documentElement.classList.add('platform-windows');
+
           if (window.location.search.indexOf('window=pin-sticker') !== -1) {
             document.documentElement.classList.add('window-pin-sticker', 'pin-sticker');
           }
-          
-          // Apply theme class
-          if (theme !== 'retro') {
-            document.documentElement.classList.add('theme-' + theme);
-          }
+
+          document.documentElement.classList.add('theme-mica');
+          try { localStorage.setItem('tiez_theme', 'mica'); } catch (e) {}
           
           // Apply compact mode
           if (compactMode) {
