@@ -4,12 +4,12 @@
  * TieZ 本地一键全量测试（发版前跑这个）
  *
  *   npm run preflight              全部
- *   npm run preflight -- --quick   只跑快的（跳过 Rust、原生、文档、生产构建）
- *   npm run preflight -- --no-native --no-docs
+ *   npm run preflight -- --quick   只跑快的（跳过 Rust、文档、生产构建）
+ *   npm run preflight -- --no-docs
  *
  * 每一步都会跑完再汇总，不会在第一个失败处停下；跳过的步骤会写明原因，
  * 不会算作通过。CI（.github/workflows/ci.yml）覆盖其中的 lint / 单测 /
- * 构建 / Rust / UI e2e；原生 smoke 和文档只在这里跑。
+ * 构建 / Rust / UI e2e；文档检查只在这里跑。
  * 自动化覆盖不到的部分见 e2e/MANUAL-CHECKLIST.md。
  */
 
@@ -25,7 +25,6 @@ const docsE2eDir = resolve(rootDir, "../tiez-e2e");
 
 const args = new Set(process.argv.slice(2));
 const quick = args.has("--quick");
-const skipNative = quick || args.has("--no-native");
 const skipDocs = quick || args.has("--no-docs");
 
 const c = {
@@ -43,9 +42,6 @@ function run(cmd, cmdArgs, cwd = rootDir) {
   }
   return res.stdout ?? "";
 }
-
-const otherTiezRunning = () =>
-  process.platform === "darwin" && spawnSync("pgrep", ["-x", "tiez-app"]).status === 0;
 
 const steps = [
   {
@@ -97,14 +93,6 @@ const steps = [
       }
       run("npx", ["e2e", "run", "--target", "clipboard-app"], e2eDir);
     },
-  },
-  {
-    name: "原生 smoke (真实启动 app + 捕获剪贴板)",
-    skip:
-      (skipNative && "--quick / --no-native") ||
-      (process.platform !== "darwin" && "仅 macOS") ||
-      (otherTiezRunning() && "TieZ 正在运行，请先退出（测试会写剪贴板，且单实例会接管启动）"),
-    run: () => run("cargo", ["test", "--locked", "--test", "native_system_e2e", "--", "--ignored"], tauriDir),
   },
   {
     name: "文档站：构建 + 链接检查 + e2e",

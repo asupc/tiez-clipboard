@@ -10,10 +10,9 @@ const cargoVersion = cargoToml.match(/^version = "([^"]+)"$/m)?.[1];
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 function detectPlatform() {
-  const value = (process.env.TIEZ_PLATFORM || process.argv[2] || "").trim().toLowerCase();
+  const value = (process.env.TIEZ_PLATFORM || process.argv[2] || "windows").trim().toLowerCase();
   if (["windows", "win"].includes(value)) return "windows";
-  if (["macos", "mac", "darwin"].includes(value)) return "macos";
-  throw new Error("Set TIEZ_PLATFORM to windows or macos before validating a release");
+  throw new Error("This build supports Windows only; set TIEZ_PLATFORM=windows");
 }
 
 function fail(message) {
@@ -63,9 +62,7 @@ if (!endpoint.includes(`channel=${channel}`)) {
 
 const tag = (process.env.GITHUB_REF_NAME || "").trim();
 if (tag && process.env.GITHUB_REF_TYPE === "tag") {
-  const expectedTag = channel === "beta"
-    ? (platform === "windows" ? `beta-v${expectedVersion}` : `beta-mac-v${expectedVersion}`)
-    : (platform === "windows" ? `v${expectedVersion}` : `mac-v${expectedVersion}`);
+  const expectedTag = channel === "beta" ? `beta-v${expectedVersion}` : `v${expectedVersion}`;
   if (tag !== expectedTag) {
     fail(`tag ${tag} does not match ${platform} version; expected ${expectedTag}`);
   }

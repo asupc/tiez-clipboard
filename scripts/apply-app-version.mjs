@@ -7,17 +7,14 @@ const versions = JSON.parse(readFileSync(versionsPath, "utf8"));
 
 function detectPlatform() {
   const arg = process.argv[2]?.trim().toLowerCase();
-  if (arg === "macos" || arg === "mac") return "macos";
   if (arg === "windows" || arg === "win") return "windows";
+  if (arg) return null;
 
   const env = process.env.TIEZ_PLATFORM?.trim().toLowerCase();
-  if (env === "macos" || env === "mac") return "macos";
   if (env === "windows" || env === "win") return "windows";
+  if (env) return null;
 
-  if (process.platform === "darwin") return "macos";
-  if (process.platform === "win32") return "windows";
-
-  return null;
+  return process.platform === "win32" ? "windows" : null;
 }
 
 function detectChannel() {
@@ -29,7 +26,7 @@ function detectChannel() {
 
 const platform = detectPlatform();
 if (!platform) {
-  console.error("[apply-app-version] Unable to detect a supported platform. Set TIEZ_PLATFORM=macos or windows.");
+  console.error("[apply-app-version] This build supports Windows only. Set TIEZ_PLATFORM=windows.");
   process.exit(1);
 }
 const channel = detectChannel();

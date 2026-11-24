@@ -7,8 +7,8 @@ const channel = process.argv[3]?.trim().toLowerCase();
 const extraArgs = process.argv.slice(4).filter(arg => arg !== "--prepare-only");
 const prepareOnly = process.argv.includes("--prepare-only");
 
-if (!["windows", "macos"].includes(platform)) {
-  console.error("Usage: node scripts/build-release.mjs <windows|macos> <stable|beta> [--prepare-only] [tauri build args]");
+if (platform !== "windows") {
+  console.error("Usage: node scripts/build-release.mjs windows <stable|beta> [--prepare-only] [tauri build args]");
   process.exit(1);
 }
 if (!["stable", "beta"].includes(channel)) {
@@ -52,9 +52,7 @@ try {
   if (prepareOnly) {
     console.log(`[build-release] Prepared ${channel}/${platform} without building`);
   } else {
-    const tauriCli = process.platform === "win32"
-      ? resolve("node_modules/.bin/tauri.cmd")
-      : resolve("node_modules/.bin/tauri");
+    const tauriCli = resolve("node_modules/.bin/tauri.cmd");
     run(tauriCli, ["build", ...extraArgs]);
     console.log(`[build-release] Finished ${channel}/${platform}`);
   }
