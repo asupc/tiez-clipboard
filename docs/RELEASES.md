@@ -2,8 +2,8 @@
 
 `versions.json` 是客户端版本号的唯一来源，分别记录：
 
-- `stable.windows` / `stable.macos`：正式版
-- `beta.windows` / `beta.macos`：群测试版
+- `stable.windows`：正式版
+- `beta.windows`：群测试版
 
 构建脚本会把目标版本同步到 `package.json`、`src-tauri/Cargo.toml` 和
 `src-tauri/tauri.conf.json`，并校验更新接口、发布渠道与 Git 标签。
@@ -15,23 +15,21 @@
 ```json
 {
   "beta": {
-    "windows": "1.0.0-beta.1",
-    "macos": "1.0.0-beta.1"
+    "windows": "1.0.0-beta.1"
   }
 }
 ```
 
-推荐用 GitHub Actions 构建（两个平台都会签名，macOS 还会公证）：
+推荐用 GitHub Actions 构建：
 
 1. 开一个只改 `versions.json` 的 PR，CI 通过后合并到 `master`。
-2. 从 `master` 触发两个测试版工作流：
+2. 从 `master` 触发测试版工作流：
 
    ```bash
-   gh workflow run release-beta-macos.yml --ref master -f git_ref=master
    gh workflow run release-beta-windows.yml --ref master -f git_ref=master
    ```
 
-3. 产物是 GitHub 上的**草稿**预发布版（`beta-mac-v…`、`beta-v…`），只有维护者能看到。
+3. 产物是 GitHub 上的**草稿**预发布版（`beta-v…`），只有维护者能看到。
 
 不再为每个测试版单独建 `beta/…` 分支。
 
@@ -47,8 +45,6 @@
 ```bash
 npm ci
 npm run release:beta:win
-# 或
-npm run release:beta:mac
 ```
 
 构建结束后脚本会恢复 package、Cargo 和 Tauri 配置，只保留
@@ -62,7 +58,7 @@ npm run release:beta:mac
 `1.0.0-beta.x` 通过「检查更新」升到正式版 `1.0.0` 及之后的 stable 补丁。
 正式版（1.0.0 起）也会查询 beta 渠道：有更新的测试版时，只在「设置 → 关于」里
 显示一行带「测试版」标记的提示，不弹窗；用户打开「接收测试版更新」后，测试版才会
-像普通更新一样提示。0.3.x / macOS 0.1.x 等旧版本不带渠道参数，只收到 stable。
+像普通更新一样提示。0.3.x 等旧版本不带渠道参数，只收到 stable。
 
 构建完成后：
 
@@ -79,14 +75,9 @@ npm run release:beta:mac
 
 ```bash
 npm run release:stable:win
-# 或
-npm run release:stable:mac
 ```
 
-GitHub Actions 正式发布标签：
-
-- Windows：`v1.0.0`
-- macOS：`mac-v1.0.0`
+GitHub Actions 正式发布标签：`v1.0.0`（Windows）。
 
 工作流会阻止标签、平台版本、Cargo、Tauri 配置或更新通道不一致的构建。
 

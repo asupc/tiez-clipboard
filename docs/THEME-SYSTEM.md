@@ -15,11 +15,8 @@ This avoids the previous problem where theme switching only changed colors while
 
 - `src/shared/config/themes.ts`
 
-This is the single source of truth for:
-
-- theme id
-- display labels
-- feature flags such as custom background and surface opacity
+TieZ ships a single theme, `mica`. This module normalizes every theme id to
+`mica` and exposes the native palette and surface-opacity helpers.
 
 ### Shared style layer
 
@@ -36,7 +33,7 @@ This layer should contain:
 
 This layer should not contain:
 
-- one theme's identity hardcoded as the global default
+- a second theme's identity
 - theme-specific `!important` patches unless there is no better option
 
 ### Theme files

@@ -8,10 +8,10 @@ checks them (see [Checks](#checks)).
 | File | Holds |
 |---|---|
 | `base.css` | Every token with its default (light) value, the default dark values, resets. |
-| `themes/*.css` | Token overrides per theme and mode. A theme may also style a few components for its signature look (receipt edges, terminal prompts) — keep those short and use tokens there too. Colors appear only as token values, never inside those component rules. |
-| `themes/_native.css` | Rules shared by Mica, Acrylic and macOS. The leading underscore loads it before their own files. |
+| `themes/*.css` | Token overrides for the Mica theme and mode. Colors appear only as token values, never inside component rules. |
+| `themes/_native.css` | Native-surface rules shared by the Mica theme. The leading underscore loads it before the theme file. |
 | `components/*.css` | How components look, written only in tokens. No colors, no theme names. |
-| `platform-*.css` | What the operating system dictates (fonts, window corners, scrollbars). |
+| `platform-windows.css` | What Windows dictates (fonts, window corners, scrollbars). |
 
 A component never names a theme (`.theme-paper .x`). If a theme needs a
 component to look different, prefer a component token (`--card-radius`,
@@ -106,7 +106,7 @@ rule's header to cover the whole rule. Current ones: the transparent window
 resets of the compact preview and pin sticker windows (they must beat any
 theme, including installed packages) and `prefers-reduced-motion`.
 
-The app supports macOS 10.13, whose WebKit has no cascade layers (`@layer`),
+The app targets Windows WebView2; older WebKit on dormant macOS code has no cascade layers (`@layer`),
 so precedence is managed with selectors, not layers.
 
 ## Checks
